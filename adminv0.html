@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8"><title>Admin - จัดการบูธ</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../config.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f4f7f6; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 900px; margin: auto; }
+        .flex { display: flex; justify-content: space-between; align-items: center; }
+        select { padding: 10px; width: 200px; border-radius: 5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; border-bottom: 1px solid #eee; text-align: left; }
+        .btn { padding: 8px 15px; border-radius: 5px; cursor: pointer; border: none; text-decoration: none; }
+        .btn-copy { background: #3498db; color: white; }
+        .btn-report { background: #e67e22; color: white; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <div class="flex">
+        <h1>จัดการบูธตาม Event</h1>
+        <a href="report.html" class="btn btn-report">📊 ดูรายงาน</a>
+       
+    </div>
+    
+    <div style="margin: 20px 0;">
+        <label>เลือก Event: </label>
+        <select id="event-select" onchange="loadBooths()"><option value="">-- เลือกงาน --</option></select>
+    </div>
+    <table>
+        <thead><tr><th>ชื่อบูธ</th><th>ลิงก์พนักงาน</th><th>คำสั่ง</th></tr></thead>
+        <tbody id="booth-table"></tbody>
+    </table>
+</div>
+
+<script>
+    const STAFF_PAGE_URL = window.location.origin + "/sell.html";
+
+    async function init() {
+        const { data } = await _supabase.from('events').select('*');
+        const select = document.getElementById('event-select');
+        data.forEach(ev => select.innerHTML += `<option value="${ev.id}">${ev.event_name}</option>`);
+    }
+
+    async function loadBooths() {
+        const evId = document.getElementById('event-select').value;
+        const { data } = await _supabase.from('booths').select('*').eq('event_id', evId);
+        const tbody = document.getElementById('booth-table');
+        tbody.innerHTML = data.map(b => {
+            const url = `${STAFF_PAGE_URL}?id=${b.id}&event_id=${evId}`;
+            return `<tr><td>${b.booth_name}</td>
+                    <td><input type="text" value="${url}" id="u-${b.id}" readonly></td>
+                    <td><button class="btn btn-copy" onclick="copy('${b.id}')">Copy</button></td></tr>`;
+        }).join('');
+    }
+
+    function copy(id) {
+        const el = document.getElementById('u-' + id); el.select();
+        navigator.clipboard.writeText(el.value); alert('คัดลอกลิงก์แล้ว');
+    }
+    init();
+</script>
+</body>
+</html>

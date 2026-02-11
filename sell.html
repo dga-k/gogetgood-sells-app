@@ -130,8 +130,8 @@
         async function loadProducts() {
             const { data } = await _supabase.from('booth_inventory')
                 .select('stock_qty, products(id, name, price)')
-                .eq('booth_id', bId);
-
+                .eq('booth_id', bId)
+                .order('product_id', { ascending: true }); // ล็อกลำดับตาม ID ของสินค้า
             masterStock = data; // อัปเดตสต็อกในตัวแปร
             const grid = document.getElementById('product-grid');
             
@@ -242,39 +242,40 @@
         }
 
         async function showHistory() {
-            const modal = document.getElementById('history-modal');
-            const list = document.getElementById('history-list');
-            modal.classList.remove('hidden');
-            list.innerHTML = '<p class="text-center py-4">กำลังโหลด...</p>';
+        const modal = document.getElementById('history-modal');
+        const list = document.getElementById('history-list');
+        modal.classList.remove('hidden');
+        list.innerHTML = '<p class="text-center py-4">กำลังโหลด...</p>';
 
-            const { data } = await _supabase.from('sales_transactions')
-                .select('sold_at, product_name, amount, payment_method')
-                .eq('booth_id', bId).order('sold_at', { ascending: false }).limit(10);
+        const { data } = await _supabase.from('sales_transactions')
+            .select('sold_at, product_name, amount, payment_method')
+            .eq('booth_id', bId)
+            .order('sold_at', { ascending: false })
+            .limit(10);
 
-            if (!data || data.length === 0) {
-                list.innerHTML = '<p class="text-center py-4 text-slate-400 text-sm">ยังไม่มีประวัติการขาย</p>';
-                return;
-            }
-
-            list.innerHTML = data.map(item => {
-                const time = new Date(item.sold_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-                return `
-                    <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
-                        <div class="flex-1 min-w-0 pr-3">
-                            <p class="text-[10px] text-slate-400 font-bold uppercase">${time} น.</p>
-                            <p class="text-xs font-bold text-slate-700 truncate-text">${item.product_name}</p>
-                        </div>
-                        <div class="text-right">
-                            <p class="text-sm font-black text-slate-800">${item.amount.toLocaleString()}.-</p>
-                            <span class="text-[8px] px-2 py-0.5 rounded-full font-bold ${item.payment_method === 'cash' ? 'bg-emerald-100 text-emerald-600' : 'bg-sky-100 text-sky-600'}">
-                                ${item.payment_method === 'cash' ? 'เงินสด' : 'โอน/QR'}
-                            </span>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+        if (!data || data.length === 0) {
+            list.innerHTML = '<p class="text-center py-4 text-slate-400 text-sm">ยังไม่มีประวัติการขาย</p>';
+            return;
         }
 
+        list.innerHTML = data.map(item => {
+            const time = new Date(item.sold_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+            return `
+                <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-start gap-3">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[10px] text-slate-400 font-bold uppercase mb-1">${time} น.</p>
+                        <p class="text-xs font-bold text-slate-700 break-words leading-relaxed">${item.product_name}</p>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <p class="text-sm font-black text-slate-800">${item.amount.toLocaleString()}.-</p>
+                        <span class="text-[8px] px-2 py-0.5 rounded-full font-bold ${item.payment_method === 'cash' ? 'bg-emerald-100 text-emerald-600' : 'bg-sky-100 text-sky-600'}">
+                            ${item.payment_method === 'cash' ? 'เงินสด' : 'โอน/QR'}
+                        </span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+}
         function closeHistory() { document.getElementById('history-modal').classList.add('hidden'); }
         function confirmClearCart() { if (cart.length > 0 && confirm("ล้างตะกร้า?")) { cart = []; updateUI(); } }
 
