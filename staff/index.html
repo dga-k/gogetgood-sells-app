@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบขายสินค้าหน้าบูธ</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../config.js" type="text/javascript"></script>
+    <style>
+        body { font-family: sans-serif; background: #f8f9fa; margin: 0; padding-bottom: 150px; }
+        .product-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; }
+        .item-card { background: white; padding: 15px; border-radius: 12px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .qty-btns { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 10px; }
+        .btn-q { width: 30px; height: 30px; border-radius: 50%; border: 1px solid #ddd; background: white; cursor: pointer; }
+        
+        /* แถบสรุปยอดด้านล่าง */
+        .cart-footer { position: fixed; bottom: 0; width: 100%; background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); padding: 15px; box-sizing: border-box; border-radius: 20px 20px 0 0; }
+        .cart-summary { display: flex; justify-content: space-between; font-weight: bold; font-size: 1.2em; margin-bottom: 10px; }
+        .pay-methods { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .btn-pay { padding: 12px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; color: white; }
+        .cash { background: #2ecc71; }
+        .qr { background: #3498db; }
+    </style>
+</head>
+<body>
+    <h3 id="display-booth" style="text-align: center; margin-top: 15px;">...</h3>
+    <div class="product-grid" id="product-list"></div>
+
+    <div class="cart-footer">
+        <div id="cart-details" style="font-size: 0.8em; color: #666; margin-bottom: 5px;">ตระกร้าว่างเปล่า</div>
+        <div class="cart-summary">
+            <span>รวมทั้งหมด:</span>
+            <span id="total-price">0 บาท</span>
+        </div>
+        <div class="pay-methods">
+            <button class="btn-pay cash" onclick="checkout('cash')">💵 จ่ายเงินสด</button>
+            <button class="btn-pay qr" onclick="checkout('qr')">📱 แสกน QR</button>
+        </div>
+    </div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const bId = params.get('id');
+        const evId = params.get('event_id');
+        document.getElementById('display-booth').innerText = "บูธ: " + bId;
+
+        let cart = {}; // เก็บข้อมูล { product_id: { name, price, qty } }
+
+        async function load() {
+            // ดึงสินค้า พร้อมกับจำนวนสต็อกที่มีอยู่ในบูธนี้เท่านั้น
+            const { data, error } = await _supabase
+                .from('products')
+                .select(`
+                    id, name, price,
+                    booths!inner(booth_name),
+                    booth_inventory!inner(stock_qty)
+                `)
+                .eq('booth_inventory.booth_id', bId); // กรองเอาเฉพาะสต็อกของบูธเรา
+           
+            const list = document.getElementById('product-list');
+            list.innerHTML = data.map(p => `
+                <div class="item-card">
+                    <strong>${p.name}</strong><br>
+                    <small>คงเหลือ: ${p.booth_inventory[0].stock_qty} ชิ้น</small><br>
+                    <span>${p.price}.-</span>
+                    <div class="qty-btns">
+                        <button class="btn-q" onclick="updateCart('${p.id}', '${p.name}', ${p.price}, -1)">-</button>
+                        <span id="q-${p.id}">0</span>
+                        <button class="btn-q" onclick="updateCart('${p.id}', '${p.name}', ${p.price}, 1)">+</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateCart(id, name, price, change) {
+            if (!cart[id]) cart[id] = { id: id, name, price, qty: 0 }; // ต้องมี id เก็บไว้ใน object ด้วย
+            cart[id].qty = Math.max(0, cart[id].qty + change);
+            document.getElementById(`q-${id}`).innerText = cart[id].qty;
+            renderCart();
+        }
+
+        function renderCart() {
+            let total = 0;
+            let itemsText = [];
+            for (let id in cart) {
+                if (cart[id].qty > 0) {
+                    total += cart[id].price * cart[id].qty;
+                    itemsText.push(`${cart[id].name} x ${cart[id].qty}`);
+                }
+            }
+            document.getElementById('total-price').innerText = total.toLocaleString() + " บาท";
+            document.getElementById('cart-details').innerText = itemsText.join(', ') || "ตระกร้าว่างเปล่า";
+        }
+
+        async function checkout(method) {
+            const items = Object.values(cart).filter(i => i.qty > 0);
+            if (items.length === 0) return alert("กรุณาเลือกสินค้าก่อนครับ");
+
+            const totalPrice = items.reduce((sum, i) => sum + (i.price * i.qty), 0);
+            const totalQty = items.reduce((sum, i) => sum + i.qty, 0);
+
+            const { error } = await _supabase.rpc('handle_sale_with_booth_stock', {
+                p_booth_id: bId,
+                p_event_id: evId,
+                p_product_name: items.map(i => `${i.name} (${i.qty})`).join(', '),
+                p_amount: totalPrice,
+                p_quantity: totalQty,
+                p_payment_method: method,
+                p_details: items.map(i => ({ id: i.id, qty: i.qty }))
+            });
+
+            if (!error) {
+                alert(`ขายสำเร็จ! ยอดรวม ${totalPrice} บาท (${method === 'cash' ? 'เงินสด' : 'QR'})`);
+                location.reload(); // รีเซ็ตหน้าจอเพื่อเริ่มบิลใหม่
+            }
+        }
+
+        load();
+    </script>
+</body>
+</html>

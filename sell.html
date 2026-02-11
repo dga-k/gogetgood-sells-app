@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>หน้าขายสินค้าประจำบูธ</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1 id="booth-title">กำลังโหลดข้อมูลบูธ...</h1>
+    <div id="product-list">
+        </div>
+
+    <script>
+        const supabase = supabase.createClient('https://sqicbdurboqyslqwptyd.supabase.co', 'sb_publishable_Jtn64Z8U54LeCkYWomwfGw_MQdPYyxz');
+
+        // 1. ดึง ID บูธจาก URL (เช่น ?booth_id=B001)
+        const urlParams = new URLSearchParams(window.location.search);
+        const boothId = urlParams.get('booth_id');
+
+        if (boothId) {
+            document.getElementById('booth-title').innerText = "หน้าขายของบูธ: " + boothId;
+            loadProducts();
+        } else {
+            document.getElementById('booth-title').innerText = "ไม่พบรหัสบูธ กรุณาขอลิงก์ใหม่จาก Admin";
+        }
+
+        // 2. ดึงรายการสินค้าจาก Database
+        async function loadProducts() {
+            const { data: products, error } = await supabase
+                .from('products')
+                .select('*');
+
+            if (products) {
+                const listDiv = document.getElementById('product-list');
+                products.forEach(pd => {
+                    listDiv.innerHTML += `
+                        <div style="border: 1px solid #ccc; margin: 10px; padding: 10px; border-radius: 8px;">
+                            <h3>${pd.name}</h3>
+                            <p>ราคา: ${pd.price} บาท</p>
+                            <button onclick="recordSale('${pd.id}', '${pd.price}')">บันทึกการขาย</button>
+                        </div>
+                    `;
+                });
+            }
+        }
+
+        // 3. ฟังก์ชันบันทึกการขาย (เมื่อกดปุ่ม)
+        async function recordSale(productId, price) {
+            const { error } = await supabase
+                .from('sales_transactions')
+                .insert([
+                    { booth_id: boothId, product_id: productId, amount: price }
+                ]);
+
+            if (!error) {
+                alert('บันทึกการขายสำเร็จ!');
+            }
+        }
+    </script>
+</body>
+</html>

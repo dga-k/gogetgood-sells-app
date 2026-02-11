@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>โอนสินค้าระหว่างบูธ</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../config.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Sarabun', sans-serif; }</style>
+</head>
+<body class="bg-slate-50 p-4">
+    <div class="max-w-md mx-auto">
+        <div class="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
+            <div class="bg-amber-500 p-6 text-white text-center">
+                <h2 class="text-2xl font-black italic">🔄 STOCK TRANSFER</h2>
+                <p class="text-[10px] opacity-90 uppercase mt-1">ย้ายสต็อกสินค้าระหว่างบูธในงาน</p>
+            </div>
+
+            <div class="p-6 space-y-5">
+                <div>
+                    <label class="block text-[11px] font-black text-amber-600 uppercase mb-2">🚩 ขั้นตอนที่ 1: เลือกงานอีเวนต์</label>
+                    <select id="event-select" onchange="handleEventChange()" class="w-full p-4 bg-amber-50 border-2 border-amber-100 rounded-2xl focus:border-amber-500 outline-none transition-all font-bold text-slate-700">
+                        <option value="">-- กรุณาเลือกงาน --</option>
+                    </select>
+                </div>
+
+                <hr class="border-slate-100">
+
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1 ml-1">📤 บูธต้นทาง (ผู้โอน)</label>
+                    <select id="from-booth" onchange="loadSourceProducts()" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold" disabled>
+                        <option value="">-- เลือกบูธต้นทาง --</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1 ml-1">📦 สินค้าที่จะโอน</label>
+                    <select id="product-select" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold text-sm" disabled>
+                        <option value="">-- เลือกสินค้า --</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1 ml-1">🔢 จำนวนที่ต้องการโอน</label>
+                    <input type="number" id="transfer-qty" placeholder="0" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-black text-lg text-amber-600">
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1 ml-1">📥 บูธปลายทาง (ผู้รับ)</label>
+                    <select id="to-booth" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold" disabled>
+                        <option value="">-- เลือกบูธปลายทาง --</option>
+                    </select>
+                </div>
+
+                <button onclick="transferStock()" id="btn-transfer" class="w-full bg-slate-800 text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all mt-4 text-lg">
+                    ยืนยันการโอนสินค้า
+                </button>
+            </div>
+        </div>
+        
+        <div class="text-center mt-6">
+            <a href="admin_dashboard.html" class="text-slate-400 text-sm font-bold">← กลับไปหน้าแดชบอร์ด</a>
+        </div>
+    </div>
+
+    <script>
+        async function init() {
+            // โหลดรายการ Event ทั้งหมดมาใส่ใน Select
+            const { data: events } = await _supabase.from('events').select('id, event_name').order('id', { ascending: false });
+            const eventSelect = document.getElementById('event-select');
+            
+            events.forEach(ev => {
+                eventSelect.innerHTML += `<option value="${ev.id}">${ev.event_name}</option>`;
+            });
+
+            // ตรวจสอบว่าถ้ามี event_id ใน URL ให้เลือกให้อัตโนมัติ
+            const params = new URLSearchParams(window.location.search);
+            const evId = params.get('event_id');
+            if (evId) {
+                eventSelect.value = evId;
+                handleEventChange();
+            }
+        }
+
+        async function handleEventChange() {
+            const evId = document.getElementById('event-select').value;
+            const fromSelect = document.getElementById('from-booth');
+            const toSelect = document.getElementById('to-booth');
+            const pSelect = document.getElementById('product-select');
+
+            // Reset ค่าต่างๆ
+            fromSelect.innerHTML = '<option value="">-- เลือกบูธต้นทาง --</option>';
+            toSelect.innerHTML = '<option value="">-- เลือกบูธปลายทาง --</option>';
+            pSelect.innerHTML = '<option value="">-- เลือกสินค้า --</option>';
+            
+            if (!evId) {
+                fromSelect.disabled = toSelect.disabled = true;
+                return;
+            }
+
+            // โหลดบูธเฉพาะของ Event ที่เลือก
+            const { data: booths } = await _supabase.from('booths').select('id, booth_name').eq('event_id', evId).order('booth_name');
+            
+            booths.forEach(b => {
+                let opt = `<option value="${b.id}">${b.booth_name}</option>`;
+                fromSelect.innerHTML += opt;
+                toSelect.innerHTML += opt;
+            });
+
+            fromSelect.disabled = toSelect.disabled = false;
+        }
+
+        async function loadSourceProducts() {
+            const bId = document.getElementById('from-booth').value;
+            const pSelect = document.getElementById('product-select');
+            
+            if (!bId) {
+                pSelect.disabled = true;
+                return;
+            }
+
+            pSelect.innerHTML = '<option value="">-- กำลังโหลดสต็อก... --</option>';
+            pSelect.disabled = false;
+
+            const { data } = await _supabase
+                .from('booth_inventory')
+                .select('product_id, stock_qty, products(name)')
+                .eq('booth_id', bId)
+                .gt('stock_qty', 0);
+
+            pSelect.innerHTML = '<option value="">-- เลือกสินค้า --</option>';
+            data.forEach(item => {
+                pSelect.innerHTML += `<option value="${item.product_id}">${item.products.name} (คงเหลือ: ${item.stock_qty})</option>`;
+            });
+        }
+
+        async function transferStock() {
+            const evId = document.getElementById('event-select').value;
+            const fromB = document.getElementById('from-booth').value;
+            const toB = document.getElementById('to-booth').value;
+            const prod = document.getElementById('product-select').value;
+            const qty = parseInt(document.getElementById('transfer-qty').value);
+
+            if (!evId || !fromB || !toB || !prod || !qty || qty <= 0) {
+                return alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+            }
+            if (fromB === toB) {
+                return alert("ต้นทางและปลายทางต้องเป็นคนละบูธกัน");
+            }
+
+            const btn = document.getElementById('btn-transfer');
+            btn.disabled = true;
+            btn.innerText = "⏳ กำลังดำเนินการ...";
+
+            // เรียก RPC ที่เรารับ p_event_id ไว้
+            const { error } = await _supabase.rpc('handle_stock_transfer', {
+                p_event_id: evId,
+                p_from_booth_id: fromB,
+                p_to_booth_id: toB,
+                p_product_id: prod,
+                p_qty: qty
+            });
+
+            if (!error) {
+                alert("✅ โอนสินค้าสำเร็จ!");
+                loadSourceProducts(); // รีโหลดสต็อกสินค้าล่าสุด
+                document.getElementById('transfer-qty').value = '';
+            } else {
+                alert("❌ ผิดพลาด: " + error.message);
+            }
+            
+            btn.disabled = false;
+            btn.innerText = "ยืนยันการโอนสินค้า";
+        }
+
+        init();
+    </script>
+</body>
+</html>

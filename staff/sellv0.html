@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ระบบขายสินค้าหน้าบูธ</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../config.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; background-color: #f8fafc; }
+        .product-card:active { transform: scale(0.98); }
+        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+    </style>
+</head>
+<body class="antialiased">
+
+    <header class="bg-indigo-600 text-white p-4 sticky top-0 z-50 shadow-lg">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 id="display-booth-name" class="text-xl font-bold">🏪 กำลังโหลด...</h1>
+                <p id="display-event-name" class="text-xs opacity-80 italic">รอสักครู่...</p>
+            </div>
+            <div class="bg-indigo-500 p-2 rounded-lg text-center min-w-[60px]">
+                <span id="cart-count" class="block text-lg font-bold">0</span>
+                <span class="text-[10px] uppercase">ชิ้น</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="p-4 mb-32">
+        <h2 class="text-gray-500 text-sm font-bold mb-3 uppercase tracking-wider">เลือกสินค้า</h2>
+        <div id="product-grid" class="grid grid-cols-2 gap-3">
+            </div>
+    </main>
+
+    <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-4px_10px_rgba(0,0,0,0.05)] px-4 pt-4 safe-area-bottom z-50 rounded-t-3xl">
+        <div class="flex justify-between items-end mb-4">
+            <div>
+                <p class="text-gray-400 text-xs">ยอดรวมทั้งสิ้น</p>
+                <p id="total-price" class="text-3xl font-black text-indigo-600">0.-</p>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="clearCart()" class="bg-gray-100 text-gray-500 p-3 rounded-2xl text-sm font-bold">ล้าง</button>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-2 gap-3 mb-4">
+            <button onclick="checkout('cash')" class="bg-green-500 text-white py-4 rounded-2xl font-bold shadow-md active:bg-green-600 flex flex-col items-center">
+                <span>💵 เงินสด</span>
+            </button>
+            <button onclick="checkout('qr')" class="bg-blue-500 text-white py-4 rounded-2xl font-bold shadow-md active:bg-blue-600 flex flex-col items-center">
+                <span>📱 เงินโอน/QR</span>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const bId = params.get('id');
+        const evId = params.get('event_id');
+        let cart = [];
+
+        // 1. ดึงข้อมูลชื่อบูธ
+        async function getBoothDetail() {
+            const { data } = await _supabase.from('booths').select('booth_name, events(event_name)').eq('id', bId).single();
+            if (data) {
+                document.getElementById('display-booth-name').innerText = `🏪 ${data.booth_name}`;
+                document.getElementById('display-event-name').innerText = data.events.event_name;
+            }
+        }
+
+        // 2. ดึงรายการสินค้าที่มีสต็อกในบูธนี้
+        async function loadProducts() {
+            const { data } = await _supabase.from('booth_inventory')
+                .select('stock_qty, products(id, name, price)')
+                .eq('booth_id', bId);
+
+            const grid = document.getElementById('product-grid');
+            grid.innerHTML = data.map(item => `
+                <button onclick="addToCart('${item.products.id}', '${item.products.name}', ${item.products.price})" 
+                        class="product-card bg-white p-4 rounded-2xl border border-gray-100 shadow-sm text-left relative overflow-hidden">
+                    <p class="font-bold text-gray-800 mb-1">${item.products.name}</p>
+                    <p class="text-indigo-600 font-bold">${item.products.price}.-</p>
+                    <div class="absolute bottom-1 right-2 text-[10px] text-gray-300">คงเหลือ: ${item.stock_qty}</div>
+                </button>
+            `).join('');
+        }
+
+        function addToCart(id, name, price) {
+            const existing = cart.find(item => item.id === id);
+            if (existing) {
+                existing.qty++;
+            } else {
+                cart.push({ id, name, price, qty: 1 });
+            }
+            updateUI();
+            // สั่นเบาๆ เมื่อกดเพิ่ม (เฉพาะมือถือที่รองรับ)
+            if (window.navigator.vibrate) window.navigator.vibrate(10);
+        }
+
+        function updateUI() {
+            const count = cart.reduce((sum, item) => sum + item.qty, 0);
+            const total = cart.reduce((sum, item) => sum + (item.qty * item.price), 0);
+            document.getElementById('cart-count').innerText = count;
+            document.getElementById('total-price').innerText = total.toLocaleString() + '.-';
+        }
+
+        function clearCart() {
+            cart = [];
+            updateUI();
+        }
+
+        async function checkout(method) {
+            if (cart.length === 0) return alert('กรุณาเลือกสินค้า');
+            
+            const total = cart.reduce((sum, item) => sum + (item.qty * item.price), 0);
+            
+            // เรียก RPC ที่เราสร้างไว้ (handle_sale_with_booth_stock)
+            const { error } = await _supabase.rpc('handle_sale_with_booth_stock', {
+                p_booth_id: bId,
+                p_event_id: evId,
+                p_product_name: cart.map(i => `${i.name} x${i.qty}`).join(', '),
+                p_amount: total,
+                p_quantity: cart.reduce((sum, i) => sum + i.qty, 0),
+                p_payment_method: method,
+                p_details: cart // ส่งรายละเอียดไปตัดสต็อก
+            });
+
+            if (!error) {
+                alert('บันทึกการขายสำเร็จ!');
+                clearCart();
+                loadProducts(); // รีโหลดสต็อกล่าสุด
+            } else {
+                alert('เกิดข้อผิดพลาด: ' + error.message);
+            }
+        }
+
+        getBoothDetail();
+        loadProducts();
+    </script>
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>จัดการสต็อก - แยกรายบูธ</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../config.js"></script>
+    <style>
+        body { font-family: 'Sarabun', sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: auto; }
+        .filter-bar { background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .flex { display: flex; justify-content: space-between; align-items: center; }
+        /* บูธ Section */
+        .booth-group { background: white; border-radius: 12px; margin-bottom: 15px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .booth-header { background: #34495e; color: white; padding: 15px 20px; font-size: 1.1rem; font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .booth-header:hover { background: #2c3e50; }
+        
+        .stock-table { width: 100%; border-collapse: collapse; }
+        .stock-table th, .stock-table td { padding: 12px 20px; text-align: left; border-bottom: 1px solid #eee; }
+        .stock-table th { background: #f8f9fa; font-size: 0.85rem; color: #666; }
+        
+        .input-pack { width: 60px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; text-align: center; font-size: 1rem; }
+        .btn-add { background: #27ae60; color: white; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .btn-add:hover { background: #219150; }
+         .btn-report { background: #e67e22; color: white; }
+        .qty-badge { background: #e8f5e9; color: #2e7d32; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
+        select { padding: 10px; border-radius: 6px; border: 1px solid #ddd; width: 250px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+   
+   
+    <div class="flex">
+         <h2>📦 เติมสต็อกสินค้า (แยกตามบูธ)</h2>
+        <a href="inventory_report.html" class="btn btn-report">📊 ดูรายงาน</a>
+       
+    </div>
+    <a href="stock_transfer.html" class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col items-center hover:shadow-md transition-all">
+                <span class="text-4xl mb-3">🔄</span>
+                <span class="font-bold text-slate-700">โอนของระหว่างบูธ</span>
+            </a>
+    <div class="filter-bar">
+        <label>เลือกงาน (Event): </label>
+        <select id="event-select" onchange="loadInventoryByBooth()">
+            <option value="">-- กรุณาเลือกงาน --</option>
+        </select>
+    </div>
+
+    <div id="booth-container">
+        </div>
+</div>
+
+<script>
+    async function init() {
+        const { data: events } = await _supabase.from('events').select('*');
+        const select = document.getElementById('event-select');
+        events.forEach(ev => {
+            const opt = document.createElement('option');
+            opt.value = ev.id;
+            opt.innerText = ev.event_name;
+            select.appendChild(opt);
+        });
+    }
+
+    async function loadInventoryByBooth() {
+        const evId = document.getElementById('event-select').value;
+        if (!evId) return;
+
+        const { data, error } = await _supabase
+            .from('booth_inventory')
+            .select(`
+                stock_qty, booth_id, product_id,
+                booths!inner(booth_name, event_id),
+                products(name, items_per_pack)
+            `)
+            .eq('booths.event_id', evId);
+
+        if (error) return console.error(error);
+
+        // จัดกลุ่มตามบูธ
+        const grouped = data.reduce((acc, item) => {
+            const bName = item.booths.booth_name;
+            if (!acc[bName]) acc[bName] = [];
+            acc[bName].push(item);
+            return acc;
+        }, {});
+
+        const container = document.getElementById('booth-container');
+        container.innerHTML = '';
+
+        for (const boothName in grouped) {
+            const items = grouped[boothName];
+            const section = document.createElement('div');
+            section.className = 'booth-group';
+            
+            section.innerHTML = `
+                <div class="booth-header">
+                    <span>🏪 ${boothName}</span>
+                    <small>${items.length} รายการสินค้า</small>
+                </div>
+                <table class="stock-table">
+                    <thead>
+                        <tr>
+                            <th>ชื่อสินค้า</th>
+                            <th>คงเหลือ (ชิ้น)</th>
+                            <th>แพ็คละ</th>
+                            <th>จำนวนที่จะเติม (แพ็ค)</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${items.map(item => `
+                            <tr>
+                                <td><strong>${item.products.name}</strong></td>
+                                <td><span class="qty-badge">${item.stock_qty}</span></td>
+                                <td>${item.products.items_per_pack}</td>
+                                <td>
+                                    <input type="number" class="input-pack" id="in-${item.booth_id}-${item.product_id}" placeholder="0">
+                                </td>
+                                <td style="text-align:right;">
+                                    <button class="btn-add" onclick="addStock('${item.booth_id}', '${item.product_id}')">➕ เติม</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            container.appendChild(section);
+        }
+    }
+
+    async function addStock(bId, pId) {
+        const input = document.getElementById(`in-${bId}-${pId}`);
+        const packs = parseInt(input.value);
+        if (!packs || packs <= 0) return alert("กรุณาใส่จำนวนแพ็ค");
+
+        const { error } = await _supabase.rpc('add_stock_by_pack', {
+            p_booth_id: bId,
+            p_product_id: pId,
+            p_packs_count: packs
+        });
+
+        if (!error) {
+            alert("เติมสินค้าเรียบร้อย!");
+            input.value = '';
+            loadInventoryByBooth(); // รีโหลดเพื่ออัปเดตตัวเลขคงเหลือ
+        } else {
+            alert("Error: " + error.message);
+        }
+    }
+
+    init();
+</script>
+</body>
+</html>
