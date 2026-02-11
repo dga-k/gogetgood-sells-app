@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Report - สรุปสต็อกภาพรวม</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../config.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; background-color: #f8fafc; }
+        .text-in { color: #10b981; }
+        .text-out { color: #ef4444; }
+        .text-balance { color: #6366f1; font-weight: bold; }
+        @media print { .no-print { display: none; } }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 no-print">
+            <div>
+                <h1 class="text-2xl font-black text-slate-800">📦 รายงานสต็อกสินค้า</h1>
+                <p class="text-slate-500">ตรวจสอบยอดเติม ยอดขาย และสินค้าคงเหลือ</p>
+            </div>
+            <div class="flex items-center gap-3 bg-white p-3 rounded-2xl shadow-sm border border-slate-100">
+                <label class="text-sm font-bold text-slate-600">งาน:</label>
+                <select id="event-select" onchange="loadReport()" class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="">-- กรุณาเลือกงาน --</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="event-total-summary" class="hidden mb-10">
+            <div class="bg-white p-6 rounded-3xl shadow-sm border-l-8 border-indigo-500">
+                <h2 class="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
+                    📋 สรุปยอดรวมสินค้าทั้งงาน (ภาพรวมทุกบูธ)
+                </h2>
+                <div id="event-total-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    </div>
+            </div>
+        </div>
+
+        <div id="report-list-container" class="space-y-8">
+            <div class="text-center py-20 text-slate-400">
+                <p class="text-4xl mb-4">🔍</p>
+                <p>กรุณาเลือกงานที่ต้องการดูรายงานสต็อก</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // โหลดรายชื่อ Event เมื่อเปิดหน้า
+        async function init() {
+            const { data: events } = await _supabase.from('events').select('*').order('event_name', { ascending: false });
+            const select = document.getElementById('event-select');
+            events.forEach(ev => {
+                const opt = document.createElement('option');
+                opt.value = ev.id;
+                opt.innerText = ev.event_name;
+                select.appendChild(opt);
+            });
+        }
+
+        async function loadReport() {
+            const evId = document.getElementById('event-select').value;
+            if (!evId) return;
+
+            // ดึงข้อมูลจาก View v_stock_summary
+            const { data, error } = await _supabase
+                .from('v_stock_summary') 
+                .select('*')
+                .eq('event_id', evId);
+
+            if (error) {
+                console.error(error);
+                return alert("เกิดข้อผิดพลาดในการโหลดข้อมูล");
+            }
+
+            const container = document.getElementById('report-list-container');
+            const eventTotalList = document.getElementById('event-total-list');
+            const eventSummaryCard = document.getElementById('event-total-summary');
+
+            if (data.length === 0) {
+                container.innerHTML = '<div class="text-center py-10 bg-white rounded-3xl">ไม่พบข้อมูลสต็อกในงานนี้</div>';
+                eventSummaryCard.classList.add('hidden');
+                return;
+            }
+
+            // --- คำนวณยอดรวมทั้ง Event ---
+            const eventTotals = data.reduce((acc, row) => {
+                if (!acc[row.product_name]) {
+                    acc[row.product_name] = { in: 0, out: 0, balance: 0, unit: row.items_per_pack || 1 };
+                }
+                acc[row.product_name].in += row.total_in;
+                acc[row.product_name].out += row.total_out;
+                acc[row.product_name].balance += row.current_stock;
+                return acc;
+            }, {});
+
+            eventSummaryCard.classList.remove('hidden');
+            eventTotalList.innerHTML = Object.keys(eventTotals).map(pName => {
+                const item = eventTotals[pName];
+                return `
+                    <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <p class="font-bold text-slate-700 mb-2 truncate">${pName}</p>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-slate-500">เติมทั้งหมด:</span>
+                            <span class="text-in font-bold">+${item.in.toLocaleString()}</span>
+                        </div>
+                        <div class="flex justify-between text-xs mb-2">
+                            <span class="text-slate-500">ขายทั้งหมด:</span>
+                            <span class="text-out font-bold">-${item.out.toLocaleString()}</span>
+                        </div>
+                        <div class="flex justify-between items-end border-t border-slate-200 pt-2">
+                            <span class="text-xs font-bold text-slate-400">คงเหลือ:</span>
+                            <div class="text-right">
+                                <span class="text-indigo-600 font-black text-lg">${item.balance.toLocaleString()}</span>
+                                <p class="text-[10px] text-slate-400">~ ${(item.balance / item.unit).toFixed(1)} แพ็ค</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // --- จัดกลุ่มและแสดงผลรายบูธ ---
+            const groupedData = data.reduce((acc, row) => {
+                if (!acc[row.booth_name]) acc[row.booth_name] = [];
+                acc[row.booth_name].push(row);
+                return acc;
+            }, {});
+
+            container.innerHTML = ''; 
+            for (const boothName in groupedData) {
+                const boothItems = groupedData[boothName];
+                let boothHtml = `
+                    <div class="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                        <div class="bg-slate-800 p-4 flex justify-between items-center">
+                            <h3 class="text-white font-bold flex items-center gap-2">🏪 บูธ: ${boothName}</h3>
+                            <span class="text-slate-400 text-xs">${boothItems.length} รายการ</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 text-slate-500 text-[10px] uppercase tracking-wider">
+                                        <th class="p-4 border-bottom">สินค้า</th>
+                                        <th class="p-4 text-right">เติมเข้า (+)</th>
+                                        <th class="p-4 text-right">ขายออก (-)</th>
+                                        <th class="p-4 text-right bg-indigo-50/30">คงเหลือ (ชิ้น)</th>
+                                        <th class="p-4 text-center">ประมาณการ</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-sm divide-y divide-slate-50">
+                `;
+
+                boothItems.forEach(item => {
+                    const perPack = item.items_per_pack || 1;
+                    const inPacks = (item.total_in / perPack).toFixed(1);
+                    const outPacks = (item.total_out / perPack).toFixed(1);
+                    const balPacks = (item.current_stock / perPack).toFixed(1);
+
+                    boothHtml += `
+                        <tr class="hover:bg-slate-50/50 transition-colors">
+                            <td class="p-4">
+                                <p class="font-bold text-slate-700">${item.product_name}</p>
+                                <p class="text-[10px] text-slate-400">แพ็คละ ${perPack} ชิ้น</p>
+                            </td>
+                            <td class="p-4 text-right">
+                                <span class="text-in font-bold">${item.total_in.toLocaleString()}</span><br>
+                                <small class="text-slate-400 text-[10px]">${inPacks} แพ็ค</small>
+                            </td>
+                            <td class="p-4 text-right">
+                                <span class="text-out font-bold">${item.total_out.toLocaleString()}</span><br>
+                                <small class="text-slate-400 text-[10px]">${outPacks} แพ็ค</small>
+                            </td>
+                            <td class="p-4 text-right bg-indigo-50/30 font-black text-indigo-700">
+                                ${item.current_stock.toLocaleString()}<br>
+                                <small class="text-indigo-400 text-[10px] font-normal">ชิ้น</small>
+                            </td>
+                            <td class="p-4 text-center">
+                                <span class="bg-slate-100 text-slate-600 px-2 py-1 rounded-lg font-bold text-xs">
+                                    ${balPacks} แพ็ค
+                                </span>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                boothHtml += `</tbody></table></div></div>`;
+                container.innerHTML += boothHtml;
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
