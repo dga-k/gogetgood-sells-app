@@ -1,4 +1,4 @@
-import './style.css'
+
 import { supabase } from './src/supabase'
 import { store } from './src/store'
 
