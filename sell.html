@@ -9,48 +9,78 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Sarabun', sans-serif; background-color: #f1f5f9; }
+        body { font-family: 'Sarabun', sans-serif; background-color: #f1f5f9; height: 100vh; overflow: hidden; }
         .product-card:active { transform: scale(0.96); transition: 0.1s; }
-        /* ซ่อน Scrollbar สำหรับรายการตะกร้า */
+        
+        /* แก้ไข 1: ทำให้ Product Grid เลื่อนได้คงที่ */
+        .product-grid-container {
+            height: calc(100vh - 450px); /* ลบพื้นที่ Header และ Footer ตะกร้า */
+            overflow-y: auto;
+            padding-bottom: 20px;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* แก้ไข 2: จัดการชื่อสินค้ายาว */
+        .truncate-text {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: block;
+        }
+
+        /* เอฟเฟกต์สำหรับสินค้าหมด */
+        .out-of-stock {
+            opacity: 0.5;
+            filter: grayscale(0.8);
+            pointer-events: none; /* กดไม่ได้ */
+        }
+
         #cart-items-list::-webkit-scrollbar { display: none; }
         .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+        
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+        .animate-slideUp { animation: slideUp 0.3s ease-out; }
     </style>
 </head>
 <body class="antialiased">
 
-   <header class="bg-indigo-700 text-white p-4 sticky top-0 z-50 shadow-md">
-    <div class="flex justify-between items-center">
-        <div class="flex items-center gap-3">
-            <button onclick="showHistory()" class="bg-white/20 p-2 rounded-xl border border-white/30 active:scale-90 transition-all">
-                📜 <span class="text-[10px] font-bold block">ประวัติ</span>
-            </button>
-            <div>
-                <h1 id="display-booth-name" class="text-sm font-bold leading-none">🏪 กำลังโหลด...</h1>
-                <p id="display-event-name" class="text-[9px] opacity-75 uppercase">รอสักครู่...</p>
+    <header class="bg-indigo-700 text-white p-4 sticky top-0 z-50 shadow-md">
+        <div class="flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <button onclick="showHistory()" class="bg-white/20 p-2 rounded-xl border border-white/30 active:scale-90 transition-all">
+                    📜 <span class="text-[10px] font-bold block">ประวัติ</span>
+                </button>
+                <div>
+                    <h1 id="display-booth-name" class="text-sm font-bold leading-none">🏪 กำลังโหลด...</h1>
+                    <p id="display-event-name" class="text-[9px] opacity-75 uppercase">รอสักครู่...</p>
+                </div>
+            </div>
+            <div class="bg-white/20 backdrop-blur-md px-3 py-1 rounded-xl text-center border border-white/30">
+                <span id="cart-count" class="block text-xl font-black">0</span>
+                <span class="text-[9px] font-bold uppercase">ชิ้น</span>
             </div>
         </div>
-        <div class="bg-white/20 backdrop-blur-md px-3 py-1 rounded-xl text-center border border-white/30">
-            <span id="cart-count" class="block text-xl font-black">0</span>
-            <span class="text-[9px] font-bold uppercase">ชิ้น</span>
-        </div>
-    </div>
-</header>
+    </header>
 
-    <main class="p-4 mb-64">
+    <main class="p-4">
         <div class="flex justify-between items-center mb-3">
             <h2 class="text-slate-500 text-xs font-black uppercase tracking-widest">เลือกรายการสินค้า</h2>
-            <span id="stock-status" class="text-[10px] text-slate-400">อัปเดตสต็อกล่าสุดแล้ว</span>
+            <span id="stock-status" class="text-[10px] text-slate-400">เลื่อนดูสินค้าได้ ↓</span>
         </div>
         
-        <div id="product-grid" class="grid grid-cols-2 gap-3">
-            </div>
+        <div class="product-grid-container">
+            <div id="product-grid" class="grid grid-cols-2 gap-3">
+                </div>
+        </div>
     </main>
 
     <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] px-4 pt-3 safe-area-bottom z-50 rounded-t-[2.5rem]">
-        
         <div class="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-3"></div>
 
-        <div id="cart-items-list" class="max-h-40 overflow-y-auto mb-4 space-y-2">
+        <div id="cart-items-list" class="max-h-32 overflow-y-auto mb-4 space-y-2">
             <p class="text-center text-slate-300 text-sm py-4 italic">ยังไม่มีสินค้าในตะกร้า</p>
         </div>
 
@@ -65,12 +95,20 @@
         </div>
         
         <div class="grid grid-cols-2 gap-3 mb-6">
-            <button onclick="checkout('cash')" class="group bg-emerald-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-emerald-200 active:scale-95 transition-all flex flex-col items-center">
-                <span class="text-lg">💵 เงินสด</span>
-            </button>
-            <button onclick="checkout('qr')" class="group bg-sky-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-sky-200 active:scale-95 transition-all flex flex-col items-center">
-                <span class="text-lg">📱 เงินโอน/QR</span>
-            </button>
+            <button id="btn-cash" onclick="checkout('cash')" class="bg-emerald-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-emerald-200 active:scale-95 transition-all">💵 เงินสด</button>
+            <button id="btn-qr" onclick="checkout('qr')" class="bg-sky-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-sky-200 active:scale-95 transition-all">📱 โอน/QR</button>
+        </div>
+    </div>
+
+    <div id="history-modal" class="fixed inset-0 bg-black/50 z-[60] hidden flex items-end">
+        <div class="bg-white w-full rounded-t-[2.5rem] p-6 animate-slideUp max-h-[80vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-black text-slate-800">📜 10 รายการล่าสุด</h2>
+                <button onclick="closeHistory()" class="text-slate-400 p-2 text-2xl">&times;</button>
+            </div>
+            <div id="history-list" class="space-y-3 overflow-y-auto">
+                </div>
+            <button onclick="closeHistory()" class="w-full mt-6 bg-slate-100 py-3 rounded-2xl font-bold text-slate-500">ปิดหน้าต่าง</button>
         </div>
     </div>
 
@@ -79,6 +117,7 @@
         const bId = params.get('id');
         const evId = params.get('event_id');
         let cart = [];
+        let masterStock = []; // เก็บสต็อกล่าสุดไว้เทียบ
 
         async function getBoothDetail() {
             const { data } = await _supabase.from('booths').select('booth_name, events(event_name)').eq('id', bId).single();
@@ -93,64 +132,37 @@
                 .select('stock_qty, products(id, name, price)')
                 .eq('booth_id', bId);
 
+            masterStock = data; // อัปเดตสต็อกในตัวแปร
             const grid = document.getElementById('product-grid');
-            grid.innerHTML = data.map(item => `
+            
+            grid.innerHTML = data.map(item => {
+                const isOut = item.stock_qty <= 0;
+                return `
                 <button onclick="addToCart('${item.products.id}', '${item.products.name}', ${item.products.price})" 
-                        class="product-card bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-left relative overflow-hidden flex flex-col justify-between h-28">
+                        class="product-card bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-left relative overflow-hidden flex flex-col justify-between h-28 ${isOut ? 'out-of-stock' : ''}">
                     <div>
-                        <p class="font-bold text-slate-800 text-sm leading-tight mb-1">${item.products.name}</p>
+                        <p class="font-bold text-slate-800 text-sm leading-tight mb-1 truncate-text">${item.products.name}</p>
                         <p class="text-indigo-600 font-black text-lg">${item.products.price}.-</p>
                     </div>
-                    <div class="text-[9px] font-bold text-slate-400 bg-slate-50 self-start px-2 py-0.5 rounded-full">
-                        คงเหลือ: ${item.stock_qty}
+                    <div class="text-[9px] font-bold ${isOut ? 'text-red-500 bg-red-50' : 'text-slate-400 bg-slate-50'} self-start px-2 py-0.5 rounded-full">
+                        ${isOut ? 'สินค้าหมด' : 'คงเหลือ: ' + item.stock_qty}
                     </div>
                 </button>
-            `).join('');
+            `}).join('');
         }
-        // ฟังก์ชันเปิดดูประวัติ
-        async function showHistory() {
-            const modal = document.getElementById('history-modal');
-            const list = document.getElementById('history-list');
-            modal.classList.remove('hidden');
-            list.innerHTML = '<p class="text-center py-4 text-slate-400">กำลังโหลด...</p>';
 
-            const { data, error } = await _supabase
-                .from('sales_transactions')
-                .select('sold_at, product_name, amount, payment_method')
-                .eq('booth_id', bId)
-                .order('sold_at', { ascending: false })
-                .limit(10);
+        function addToCart(id, name, price) {
+            const productStock = masterStock.find(s => s.products.id === id);
+            const existing = cart.find(item => item.id === id);
+            const currentQty = existing ? existing.qty : 0;
 
-            if (error || !data || data.length === 0) {
-                list.innerHTML = '<p class="text-center py-4 text-slate-400 text-sm">ยังไม่มีประวัติการขายวันนี้</p>';
+            // แก้ไข: เช็คสต็อกก่อนเพิ่ม
+            if (currentQty + 1 > productStock.stock_qty) {
+                alert(`❌ สินค้า "${name}" ไม่พอขาย (คงเหลือ ${productStock.stock_qty})`);
+                if (window.navigator.vibrate) window.navigator.vibrate([50, 50, 50]);
                 return;
             }
 
-            list.innerHTML = data.map(item => {
-                const time = new Date(item.sold_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-                const methodColor = item.payment_method === 'cash' ? 'bg-emerald-100 text-emerald-600' : 'bg-sky-100 text-sky-600';
-                const methodName = item.payment_method === 'cash' ? 'เงินสด' : 'โอน/QR';
-
-                return `
-                    <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
-                        <div class="flex-1 pr-3">
-                            <p class="text-[10px] text-slate-400 font-bold uppercase mb-1">${time} น.</p>
-                            <p class="text-xs font-bold text-slate-700 truncate leading-tight">${item.product_name}</p>
-                        </div>
-                        <div class="text-right">
-                            <p class="text-sm font-black text-slate-800">${item.amount.toLocaleString()}.-</p>
-                            <span class="text-[8px] px-2 py-0.5 rounded-full font-bold ${methodColor}">${methodName}</span>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function closeHistory() {
-            document.getElementById('history-modal').classList.add('hidden');
-        }
-        function addToCart(id, name, price) {
-            const existing = cart.find(item => item.id === id);
             if (existing) {
                 existing.qty++;
             } else {
@@ -166,16 +178,7 @@
                 cart[index].qty--;
                 if (cart[index].qty <= 0) cart.splice(index, 1);
             }
-            if (window.navigator.vibrate) window.navigator.vibrate(10);
             updateUI();
-        }
-
-        function confirmClearCart() {
-            if (cart.length === 0) return;
-            if (confirm("คุณต้องการล้างสินค้าทั้งหมดในตะกร้าใช่หรือไม่?")) {
-                cart = [];
-                updateUI();
-            }
         }
 
         function updateUI() {
@@ -185,8 +188,8 @@
             } else {
                 list.innerHTML = cart.map(item => `
                     <div class="flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                        <div class="flex-1">
-                            <p class="text-xs font-black text-slate-700">${item.name}</p>
+                        <div class="flex-1 min-w-0 pr-2">
+                            <p class="text-xs font-black text-slate-700 truncate-text">${item.name}</p>
                             <p class="text-[10px] font-bold text-indigo-500">${item.price}.- / ชิ้น</p>
                         </div>
                         <div class="flex items-center gap-4">
@@ -202,17 +205,15 @@
             const total = cart.reduce((sum, item) => sum + (item.qty * item.price), 0);
             document.getElementById('cart-count').innerText = count;
             document.getElementById('total-price').innerText = total.toLocaleString() + '.-';
-            
-            // Auto scroll ตะกร้าไปล่างสุดเมื่อเพิ่มของ
             list.scrollTop = list.scrollHeight;
         }
 
         async function checkout(method) {
-            if (cart.length === 0) return alert('กรุณาเลือกสินค้าก่อนชำระเงิน');
+            if (cart.length === 0) return;
             
-            const btn = event.currentTarget;
-            btn.disabled = true;
-            btn.innerText = '⏳ กำลังบันทึก...';
+            const btnCash = document.getElementById('btn-cash');
+            const btnQr = document.getElementById('btn-qr');
+            btnCash.disabled = true; btnQr.disabled = true;
 
             const total = cart.reduce((sum, item) => sum + (item.qty * item.price), 0);
             const qty = cart.reduce((sum, i) => sum + i.qty, 0);
@@ -232,36 +233,53 @@
                 alert('🎉 บันทึกการขายเรียบร้อย!');
                 cart = [];
                 updateUI();
-                loadProducts(); 
+                await loadProducts(); 
             } else {
-                alert('❌ เกิดข้อผิดพลาด: ' + error.message);
+                alert('❌ สต็อกอาจไม่พอหรือเกิดข้อผิดพลาด: ' + error.message);
             }
             
-            btn.disabled = false;
-            btn.innerText = method === 'cash' ? '💵 เงินสด' : '📱 เงินโอน/QR';
+            btnCash.disabled = false; btnQr.disabled = false;
         }
+
+        async function showHistory() {
+            const modal = document.getElementById('history-modal');
+            const list = document.getElementById('history-list');
+            modal.classList.remove('hidden');
+            list.innerHTML = '<p class="text-center py-4">กำลังโหลด...</p>';
+
+            const { data } = await _supabase.from('sales_transactions')
+                .select('sold_at, product_name, amount, payment_method')
+                .eq('booth_id', bId).order('sold_at', { ascending: false }).limit(10);
+
+            if (!data || data.length === 0) {
+                list.innerHTML = '<p class="text-center py-4 text-slate-400 text-sm">ยังไม่มีประวัติการขาย</p>';
+                return;
+            }
+
+            list.innerHTML = data.map(item => {
+                const time = new Date(item.sold_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+                return `
+                    <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
+                        <div class="flex-1 min-w-0 pr-3">
+                            <p class="text-[10px] text-slate-400 font-bold uppercase">${time} น.</p>
+                            <p class="text-xs font-bold text-slate-700 truncate-text">${item.product_name}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-sm font-black text-slate-800">${item.amount.toLocaleString()}.-</p>
+                            <span class="text-[8px] px-2 py-0.5 rounded-full font-bold ${item.payment_method === 'cash' ? 'bg-emerald-100 text-emerald-600' : 'bg-sky-100 text-sky-600'}">
+                                ${item.payment_method === 'cash' ? 'เงินสด' : 'โอน/QR'}
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function closeHistory() { document.getElementById('history-modal').classList.add('hidden'); }
+        function confirmClearCart() { if (cart.length > 0 && confirm("ล้างตะกร้า?")) { cart = []; updateUI(); } }
 
         getBoothDetail();
         loadProducts();
     </script>
-    <div id="history-modal" class="fixed inset-0 bg-black/50 z-[60] hidden flex items-end">
-    <div class="bg-white w-full rounded-t-[2.5rem] p-6 animate-slideUp max-h-[80vh] overflow-y-auto">
-        <div class="flex justify-between items-center mb-4">
-            <h2 class="text-xl font-black text-slate-800">📜 10 รายการล่าสุด</h2>
-            <button onclick="closeHistory()" class="text-slate-400 font-bold p-2 text-2xl">&times;</button>
-        </div>
-        <div id="history-list" class="space-y-3">
-            </div>
-        <button onclick="closeHistory()" class="w-full mt-6 bg-slate-100 py-3 rounded-2xl font-bold text-slate-500">ปิดหน้าต่าง</button>
-    </div>
-</div>
-
-<style>
-    @keyframes slideUp {
-        from { transform: translateY(100%); }
-        to { transform: translateY(0); }
-    }
-    .animate-slideUp { animation: slideUp 0.3s ease-out; }
-</style>
 </body>
 </html>
