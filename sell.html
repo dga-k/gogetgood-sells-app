@@ -65,7 +65,7 @@
         </div>
     </header>
 
-    <main class="p-4">
+    <main class="p-5">
         <div class="flex justify-between items-center mb-3">
             <h2 class="text-slate-500 text-xs font-black uppercase tracking-widest">เลือกรายการสินค้า</h2>
             <span id="stock-status" class="text-[10px] text-slate-400">เลื่อนดูสินค้าได้ ↓</span>
@@ -94,9 +94,9 @@
             </button>
         </div>
         
-        <div class="grid grid-cols-2 gap-3 mb-6">
+        <div class="grid grid-cols-2 gap-3 mb-2">
             <button id="btn-cash" onclick="checkout('cash')" class="bg-emerald-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-emerald-200 active:scale-95 transition-all">💵 เงินสด</button>
-            <button id="btn-qr" onclick="checkout('qr')" class="bg-sky-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-sky-200 active:scale-95 transition-all">📱 โอน/QR</button>
+            <button id="btn-qr" onclick="openQRModal()" class="bg-sky-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-sky-200 active:scale-95 transition-all">📱 โอน/QR</button>
         </div>
     </div>
 
@@ -111,7 +111,23 @@
             <button onclick="closeHistory()" class="w-full mt-6 bg-slate-100 py-3 rounded-2xl font-bold text-slate-500">ปิดหน้าต่าง</button>
         </div>
     </div>
+    <div id="qr-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+        <div class="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl text-center">
+            <h2 class="text-xl font-black mb-1">สแกนเพื่อชำระเงิน</h2>
+            <p id="qr-total-text" class="text-indigo-600 font-black text-2xl mb-4">0.-</p>
+            
+            <div class="bg-gray-50 p-4 rounded-2xl mb-4 flex justify-center border-2 border-dashed border-gray-200">
+                <img id="qr-img" src="" alt="PromptPay QR" class="w-48 h-48">
+            </div>
 
+            <p class="text-xs text-gray-400 mb-6 italic">* กรุณาตรวจสอบยอดเงินและชื่อบัญชีให้ถูกต้อง</p>
+            
+            <div class="flex gap-2">
+                <button onclick="closeModal('qr-modal')" class="flex-1 py-3 font-bold text-gray-500 bg-gray-100 rounded-xl">ปิด</button>
+                <button onclick="confirmPayment('transfer')" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg">ยืนยันรับเงินแล้ว</button>
+            </div>
+        </div>
+    </div>
     <script>
         const params = new URLSearchParams(window.location.search);
         const bId = params.get('id');
@@ -126,8 +142,25 @@
                 document.getElementById('display-event-name').innerText = data.events.event_name;
             }
         }
+        // เพิ่มฟังก์ชันควบคุม Modal (วางไว้ใน <script> ส่วนบนสุด)
+        window.openModal = function(id) {
+            const modal = document.getElementById(id);
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.style.display = 'flex'; // บังคับแสดงผล
+            } else {
+                console.error("หา Modal ID: " + id + " ไม่เจอ");
+            }
+        };
 
-      async function loadProducts() {
+        window.closeModal = function(id) {
+            const modal = document.getElementById(id);
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.style.display = 'none';
+            }
+        };
+        async function loadProducts() {
             // 1. ดึงข้อมูลเพิ่ม และกรองเฉพาะที่เปิดใช้งาน (is_enabled)
             const { data } = await _supabase.from('booth_inventory')
                 .select(`
@@ -155,7 +188,7 @@
             return `
             <button onclick="addToCart('${p.id}', '${p.name}', ${p.price})" 
                     ${isOut ? 'disabled' : ''}
-                    class="product-card bg-white rounded-2xl border border-slate-100 shadow-sm text-left relative overflow-hidden flex flex-col h-24 transition-all active:scale-95 ${isOut ? 'opacity-60 grayscale' : ''}"
+                    class="product-card bg-white rounded-2xl border border-slate-100 shadow-sm text-left relative overflow-hidden flex flex-col h-20 transition-all active:scale-95 ${isOut ? 'opacity-60 grayscale' : ''}"
                     style="border-left: 6px solid ${color}">
                 
                 <div class="p-3 flex flex-col justify-between h-full w-full" style="background-color: ${bgColor}">
@@ -231,7 +264,34 @@
             document.getElementById('total-price').innerText = total.toLocaleString() + '.-';
             list.scrollTop = list.scrollHeight;
         }
+        window.openQRModal = function() {
+            // 1. คำนวณยอดรวมจากตะกร้าสินค้า (ตัวแปร cart ของคุณ)
+            const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            
+            if (total <= 0) return alert('กรุณาเลือกสินค้าก่อนครับ');
 
+            // 2. แสดงยอดเงินใน Modal
+            document.getElementById('qr-total-text').innerText = total.toLocaleString() + '.-';
+
+            // 3. สร้าง URL สำหรับ PromptPay QR Code 
+            // หมายเหตุ: แทนที่ 0812345678 ด้วยเบอร์พร้อมเพย์หรือเลขบัตรประชาชนที่ต้องการรับเงิน
+            const promptPayId = "0636628882"; 
+            const qrUrl = `https://promptpay.io/${promptPayId}/${total}.png`;
+            
+            document.getElementById('qr-img').src = qrUrl;
+
+            // 4. เปิด Modal
+            openModal('qr-modal');
+        };
+                // ฟังก์ชันยืนยันการจ่ายเงิน (ปรับใช้ตาม logic เดิมของคุณ)
+        window.confirmPayment = async function(method) {
+            // ใส่ Logic การตัดสต็อกและบันทึกข้อมูลลง Database ตรงนี้
+            // เมื่อสำเร็จให้ปิด Modal และเคลียร์ตะกร้า
+            checkout('qr')
+            
+            closeModal('qr-modal');
+            // cart = []; renderCart(); ...
+        };
         async function checkout(method) {
             if (cart.length === 0) return;
             
