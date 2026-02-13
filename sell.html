@@ -198,8 +198,8 @@
             const isOut = item.stock_qty <= 0;
             
             // 2. ใช้สีประจำสินค้า (ถ้าไม่มีใช้สี Indigo)
-            const color = p.color_code || '#6366f1';
-            const bgColor = color + '15'; // ความโปร่งใส 15%
+            const color = p.color_code || '#F5F5F5';
+            const bgColor = color + '80'; // ความโปร่งใส 15%
 
             return `
             <button onclick="addToCart('${p.id}', '${p.name}', ${p.price})" 
@@ -292,7 +292,7 @@
                 const { data: event, error } = await _supabase
                     .from('events')
                     .select('qr_code_number, status')
-                    .eq('id', store.currentEventId) // หรือใช้ตัวแปรที่เก็บ ID งานปัจจุบันไว้
+                    .eq('id', evId) // หรือใช้ตัวแปรที่เก็บ ID งานปัจจุบันไว้
                     .single();
 
                 if (error || !event) {
