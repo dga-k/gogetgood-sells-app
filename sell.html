@@ -160,6 +160,22 @@
                 modal.style.display = 'none';
             }
         };
+        // ตัวอย่างโค้ดในหน้า sell.html
+        async function checkEventStatus() {
+            const { data: event } = await _supabase
+                .from('events')
+                .select('status')
+                .eq('id', evId)
+                .single();
+
+            if (event.status === 'closed') {
+                alert('❌ ขณะนี้ระบบปิดการขายชั่วคราว ไม่สามารถทำรายการได้');
+                document.getElementById('btn-cash').disabled = true;
+                document.getElementById('btn-cash').innerText = 'ปิดการขาย';
+                document.getElementById('btn-qr').disabled = true;
+                document.getElementById('btn-qr').innerText = 'ปิดการขาย';
+            }
+        }
         async function loadProducts() {
             // 1. ดึงข้อมูลเพิ่ม และกรองเฉพาะที่เปิดใช้งาน (is_enabled)
             const { data } = await _supabase.from('booth_inventory')
@@ -264,24 +280,52 @@
             document.getElementById('total-price').innerText = total.toLocaleString() + '.-';
             list.scrollTop = list.scrollHeight;
         }
-        window.openQRModal = function() {
-            // 1. คำนวณยอดรวมจากตะกร้าสินค้า (ตัวแปร cart ของคุณ)
+        window.openQRModal = async function() {
+            // 1. คำนวณยอดรวมจากตะกร้าสินค้า
             const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
             
             if (total <= 0) return alert('กรุณาเลือกสินค้าก่อนครับ');
 
-            // 2. แสดงยอดเงินใน Modal
-            document.getElementById('qr-total-text').innerText = total.toLocaleString() + '.-';
+            try {
+                // 2. ดึงข้อมูล Event เพื่อเอาเลข qr_code_number
+                // หมายเหตุ: currentEventId ต้องได้มาจาก URL Params หรือ store ที่คุณเก็บไว้
+                const { data: event, error } = await _supabase
+                    .from('events')
+                    .select('qr_code_number, status')
+                    .eq('id', store.currentEventId) // หรือใช้ตัวแปรที่เก็บ ID งานปัจจุบันไว้
+                    .single();
 
-            // 3. สร้าง URL สำหรับ PromptPay QR Code 
-            // หมายเหตุ: แทนที่ 0812345678 ด้วยเบอร์พร้อมเพย์หรือเลขบัตรประชาชนที่ต้องการรับเงิน
-            const promptPayId = "0636628882"; 
-            const qrUrl = `https://promptpay.io/${promptPayId}/${total}.png`;
-            
-            document.getElementById('qr-img').src = qrUrl;
+                if (error || !event) {
+                    console.error('Fetch Event Error:', error);
+                    return alert('ไม่สามารถดึงข้อมูลอีเวนต์ได้');
+                }
 
-            // 4. เปิด Modal
-            openModal('qr-modal');
+                // 3. ตรวจสอบสถานะ (ถ้า Admin ปิดงาน ไม่ให้สร้าง QR)
+                if (event.status === 'closed') {
+                    return alert('❌ อีเวนต์นี้ปิดการขายแล้ว ไม่สามารถรับชำระเงินได้');
+                }
+
+                if (!event.qr_code_number) {
+                    return alert('⚠️ อีเวนต์นี้ยังไม่ได้ระบุเลขเบอร์ QR สำหรับรับเงิน');
+                }
+
+                // 4. แสดงยอดเงินใน Modal
+                document.getElementById('qr-total-text').innerText = total.toLocaleString() + '.-';
+
+                // 5. สร้าง URL สำหรับ PromptPay QR Code (ใช้เลขที่ดึงมาจาก DB)
+                const cleanQRNumber = event.qr_code_number.replace(/-/g, ""); // ตัดเครื่องหมายขีดออกถ้ามี
+                const qrUrl = `https://promptpay.io/${cleanQRNumber}/${total}.png`;
+                
+                document.getElementById('qr-img').src = qrUrl;
+
+                // 6. เปิด Modal
+                openModal('qr-modal');
+
+            } catch (err) {
+                console.error('System Error:', err);
+                alert('เกิดข้อผิดพลาดในการสร้าง QR Code');
+                openModal('qr-modal');
+            }
         };
                 // ฟังก์ชันยืนยันการจ่ายเงิน (ปรับใช้ตาม logic เดิมของคุณ)
         window.confirmPayment = async function(method) {
@@ -292,6 +336,20 @@
             closeModal('qr-modal');
             // cart = []; renderCart(); ...
         };
+        async function getEventQRData(eventId) {
+            const { data, error } = await _supabase
+                .from('events')
+                .select('qr_code_number, status') // ดึงทั้งเลข QR และสถานะมาเช็คพร้อมกัน
+                .eq('id', eventId)
+                .single(); // ใช้ .single() เพราะเราต้องการข้อมูลแค่แถวเดียว
+
+            if (error) {
+                console.error('Error fetching event data:', error);
+                return null;
+            }
+
+            return data;
+        }
         async function checkout(method) {
             if (cart.length === 0) return;
             
@@ -362,7 +420,7 @@
 }
         function closeHistory() { document.getElementById('history-modal').classList.add('hidden'); }
         function confirmClearCart() { if (cart.length > 0 && confirm("ล้างตะกร้า?")) { cart = []; updateUI(); } }
-
+        checkEventStatus();
         getBoothDetail();
         loadProducts();
     </script>
