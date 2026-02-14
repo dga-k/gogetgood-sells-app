@@ -88,78 +88,67 @@
         fetchData();
     }
 
-    async function fetchData() {
-    const evId = document.getElementById('event-select').value;
-    
-    let query = _supabase
-        .from('sales_transactions')
-        .select(`*, booths(booth_name)`)
-        .order('sold_at', { ascending: false });
-    
-    if (evId !== 'all') query = query.eq('event_id', evId);
+       async function fetchData() {
+            const evId = document.getElementById('event-select').value;
+            
+            // 1. ดึงข้อมูลจาก View ที่คำนวณมาให้แล้ว
+            let query = _supabase.from('v_sales_report').select('*');
+            if (evId !== 'all') query = query.eq('event_id', evId);
 
-    const { data, error } = await query;
-    if (error) return console.error(error);
+            const { data: reportData, error: err1 } = await query;
+            if (err1) return console.error(err1);
 
-    // --- ตัวแปรสำหรับคำนวณ ---
-    let totalEventCash = 0;
-    let totalEventQr = 0;
-    const boothStats = {};
+            // 2. ดึงประวัติการขายล่าสุด (เพื่อโชว์ในตารางประวัติ 50 รายการล่าสุดพอ)
+            let historyQuery = _supabase
+                .from('sales_transactions')
+                .select(`*, booths(booth_name)`)
+                .order('sold_at', { ascending: false })
+                .limit(50);
+            if (evId !== 'all') historyQuery = historyQuery.eq('event_id', evId);
+            
+            const { data: historyData } = await historyQuery;
 
-    data.forEach(s => {
-        const bName = s.booths ? s.booths.booth_name : 'ไม่ระบุชื่อ';
-        const bId = s.booth_id;
-        const amt = Number(s.amount);
+            // --- จัดการยอดเงินรวม (ใช้ข้อมูลจาก View) ---
+            let totalEventCash = 0;
+            let totalEventQr = 0;
+            const boothStats = {};
 
-        // 1. คำนวณยอดรวม Event (รวมทุกบูธ)
-        if (s.payment_method === 'cash') totalEventCash += amt;
-        else totalEventQr += amt;
+            reportData.forEach(row => {
+                const amt = Number(row.total_sum);
+                
+                // ยอดรวม Event
+                if (row.payment_method === 'cash') totalEventCash += amt;
+                else totalEventQr += amt;
 
-        // 2. คำนวณแยกรายบูธ
-        if (!boothStats[bId]) {
-            boothStats[bId] = { name: bName, cash: 0, qr: 0, total: 0 };
-        }
-        if (s.payment_method === 'cash') boothStats[bId].cash += amt;
-        else boothStats[bId].qr += amt;
-        boothStats[bId].total += amt;
-    });
+                // ยอดรายบูธ
+                if (!boothStats[row.booth_id]) {
+                    boothStats[row.booth_id] = { name: row.booth_name, cash: 0, qr: 0, total: 0 };
+                }
+                if (row.payment_method === 'cash') boothStats[row.booth_id].cash += amt;
+                else boothStats[row.booth_id].qr += amt;
+                boothStats[row.booth_id].total += amt;
+            });
 
-    // --- แสดงผลส่วนที่ 1: การ์ดยอดรวม Event ---
-    document.getElementById('sum-cash').innerText = totalEventCash.toLocaleString();
-    document.getElementById('sum-qr').innerText = totalEventQr.toLocaleString();
-    document.getElementById('sum-total').innerText = (totalEventCash + totalEventQr).toLocaleString();
+            // --- แสดงผล UI (การ์ดยอดรวมและการ์ดรายบูธ) ---
+            document.getElementById('sum-cash').innerText = totalEventCash.toLocaleString();
+            document.getElementById('sum-qr').innerText = totalEventQr.toLocaleString();
+            document.getElementById('sum-total').innerText = (totalEventCash + totalEventQr).toLocaleString();
 
-    // --- แสดงผลส่วนที่ 2: การ์ดแยกรายบูธ ---
-    const summaryDiv = document.getElementById('booth-summary-list');
-    summaryDiv.innerHTML = Object.values(boothStats).map(b => `
-        <div class="booth-card">
-            <h4>🏪 ${b.name}</h4>
-            <div class="booth-stat"><span>เงินสด:</span> <b>${b.cash.toLocaleString()}</b></div>
-            <div class="booth-stat"><span>โอน/QR:</span> <b>${b.qr.toLocaleString()}</b></div>
-            <div class="booth-stat" style="color: #e67e22; font-weight:bold; border-top: 1px solid #eee; margin-top:5px; padding-top:5px;">
-                <span>รวม:</span> <b>${b.total.toLocaleString()}.-</b>
-            </div>
-        </div>
-    `).join('');
+            document.getElementById('booth-summary-list').innerHTML = Object.values(boothStats).map(b => `
+                <div class="booth-card">
+                    <h4>🏪 ${b.name}</h4>
+                    <div class="booth-stat"><span>เงินสด:</span> <b>${b.cash.toLocaleString()}</b></div>
+                    <div class="booth-stat"><span>โอน/QR:</span> <b>${b.qr.toLocaleString()}</b></div>
+                    <div class="booth-stat font-bold border-t mt-1 pt-1 text-orange-600">
+                        <span>รวม:</span> <b>${b.total.toLocaleString()}.-</b>
+                    </div>
+                </div>
+            `).join('');
 
-    // --- แสดงผลส่วนที่ 3: ตารางประวัติการขาย (เหมือนเดิม) ---
-    const tableBody = document.getElementById('sales-table');
-    tableBody.innerHTML = data.map(s => `
-        <tr>
-            <td>${new Date(s.sold_at).toLocaleTimeString('th-TH')}</td>
-            <td><strong>${s.booths ? s.booths.booth_name : 'N/A'}</strong></td>
-            <td>${s.product_name}</td>
-            <td>${Number(s.amount).toLocaleString()}</td>
-            <td>
-                <span class="badge" style="background: ${s.payment_method === 'cash' ? '#27ae60' : '#2980b9'}">
-                    ${s.payment_method === 'cash' ? 'Cash' : 'QR'}
-                </span>
-            </td>
-        </tr>
-    `).join('');
-}
-
-    init();
+            // --- แสดงผลตารางประวัติ (ดึงจาก historyData) ---
+            renderSalesTable(historyData); 
+        }   
+        init();
 </script>
 </body>
 </html>

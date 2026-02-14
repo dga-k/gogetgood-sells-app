@@ -450,7 +450,7 @@
             const name = document.getElementById('new-event-name').value;
             const qr = document.getElementById('new-event-qr').value;
             const status = document.getElementById('new-event-status').value;
-            const mode = document.getElementById('new-event-mode').value;
+            const mode = document.getElementById('new-event-stock-mode').value;
             
             if (!name) return alert('กรุณาระบุชื่ออีเวนต์');
 
@@ -459,7 +459,7 @@
                     event_name: name, 
                     qr_code_number: qr, 
                     status: status,
-                    mode:mode 
+                    stock_mode:mode 
                 }
             ]);
 
