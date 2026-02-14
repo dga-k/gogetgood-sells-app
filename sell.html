@@ -134,7 +134,26 @@
         const evId = params.get('event_id');
         let cart = [];
         let masterStock = []; // เก็บสต็อกล่าสุดไว้เทียบ
+        let currentStockBoothId = null;
+        async function init() {
+            try {
 
+                checkEventStatus();
+                getBoothDetail();
+        
+
+                // ค. ตัดสินใจว่าจะดึงสต็อกที่บูธไหน (สำคัญมาก!)
+                // ต้องเอาผลลัพธ์มาเก็บไว้ที่ currentStockBoothId ก่อนเรียก loadProducts
+                currentStockBoothId = await determineStockBooth(); 
+
+                // ง. เรียกโหลดสินค้าขึ้นหน้าจอ
+                // ตอนนี้ loadProducts จะรู้แล้วว่าต้องไปดึงที่ ID ไหน
+                await loadProducts();
+
+            } catch (error) {
+                console.error("Initialization failed:", error);
+            }
+        }
         async function getBoothDetail() {
             const { data } = await _supabase.from('booths').select('booth_name, events(event_name)').eq('id', bId).single();
             if (data) {
@@ -177,17 +196,20 @@
             }
         }
         async function loadProducts() {
+            if (!currentStockBoothId) return;
             // 1. ดึงข้อมูลเพิ่ม และกรองเฉพาะที่เปิดใช้งาน (is_enabled)
+           
             const { data } = await _supabase.from('booth_inventory')
                 .select(`
                     stock_qty, 
                     products(id, name, price, image_url, color_code, sort_order, is_enabled)
                 `)
-                .eq('booth_id', bId)
+                .eq('booth_id', currentStockBoothId)
                 .eq('products.is_enabled', true) // แสดงเฉพาะที่เปิดใช้งาน
                 .order('products(sort_order)', { ascending: true }); // เรียงตามลำดับที่เราตั้งไว้
             
             masterStock = data;
+            console.log(masterStock)
             const grid = document.getElementById('product-grid');
             
             grid.innerHTML = data.map(item => {
@@ -280,6 +302,45 @@
             document.getElementById('total-price').innerText = total.toLocaleString() + '.-';
             list.scrollTop = list.scrollHeight;
         }
+       // ฟังก์ชันตัดสินใจว่าจะใช้สต็อกที่บูธไหน
+        async function determineStockBooth() {
+            try {
+               
+
+                // 1. ดึงการตั้งค่า mode ของอีเวนต์นี้
+                const { data: event, error: evError } = await _supabase
+                    .from('events')
+                    .select('stock_mode')
+                    .eq('id', evId)
+                    .single();
+
+                if (evError || !event) return bId; // กันเหนียว: ถ้าผิดพลาด ให้ใช้บูธตัวเอง
+
+                // 2. ถ้าเป็นโหมดแยก (individual) ให้คืนค่า ID บูธตัวเอง
+                if (event.stock_mode === 'individual') {
+                    return bId;
+                }
+
+                // 3. ถ้าเป็นโหมดรวม (shared) ให้ค้นหา ID บูธที่ชื่อ "คลังกลาง"
+                const { data: centralBooth, error: boothError } = await _supabase
+                    .from('booths')
+                    .select('id')
+                    .eq('event_id', evId)
+                    .eq('booth_name', 'คลังกลาง')
+                    .single();
+
+                if (boothError || !centralBooth) {
+                    console.warn("ไม่พบชื่อบูธ 'คลังกลาง' ในโหมด shared สต็อกอาจจะไม่แสดง");
+                    return bId;
+                }
+
+                return centralBooth.id;
+
+            } catch (e) {
+                console.error("Error determining stock booth:", e);
+                return bId;
+            }
+        }
         window.openQRModal = async function() {
             // 1. คำนวณยอดรวมจากตะกร้าสินค้า
             const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -352,7 +413,6 @@
         }
         async function checkout(method) {
             if (cart.length === 0) return;
-            
             const btnCash = document.getElementById('btn-cash');
             const btnQr = document.getElementById('btn-qr');
             btnCash.disabled = true; btnQr.disabled = true;
@@ -420,9 +480,7 @@
 }
         function closeHistory() { document.getElementById('history-modal').classList.add('hidden'); }
         function confirmClearCart() { if (cart.length > 0 && confirm("ล้างตะกร้า?")) { cart = []; updateUI(); } }
-        checkEventStatus();
-        getBoothDetail();
-        loadProducts();
+        init();
     </script>
 </body>
 </html>
