@@ -12,15 +12,13 @@
         body { font-family: 'Sarabun', sans-serif; background-color: #f1f5f9; height: 100vh; overflow: hidden; }
         .product-card:active { transform: scale(0.96); transition: 0.1s; }
         
-        /* แก้ไข 1: ทำให้ Product Grid เลื่อนได้คงที่ */
         .product-grid-container {
-            height: calc(100vh - 450px); /* ลบพื้นที่ Header และ Footer ตะกร้า */
+            height: calc(100vh - 450px);
             overflow-y: auto;
             padding-bottom: 20px;
             -webkit-overflow-scrolling: touch;
         }
 
-        /* แก้ไข 2: จัดการชื่อสินค้ายาว */
         .truncate-text {
             white-space: nowrap;
             overflow: hidden;
@@ -28,11 +26,10 @@
             display: block;
         }
 
-        /* เอฟเฟกต์สำหรับสินค้าหมด */
         .out-of-stock {
             opacity: 0.5;
             filter: grayscale(0.8);
-            pointer-events: none; /* กดไม่ได้ */
+            pointer-events: none;
         }
 
         #cart-items-list::-webkit-scrollbar { display: none; }
@@ -72,8 +69,7 @@
         </div>
         
         <div class="product-grid-container">
-            <div id="product-grid" class="grid grid-cols-2 gap-3">
-                </div>
+            <div id="product-grid" class="grid grid-cols-2 gap-3"></div>
         </div>
     </main>
 
@@ -95,7 +91,7 @@
         </div>
         
         <div class="grid grid-cols-2 gap-3 mb-2">
-            <button id="btn-cash" onclick="checkout('cash')" class="bg-emerald-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-emerald-200 active:scale-95 transition-all">💵 เงินสด</button>
+            <button id="btn-cash" onclick="openChangeModal()" class="bg-emerald-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-emerald-200 active:scale-95 transition-all">💵 เงินสด</button>
             <button id="btn-qr" onclick="openQRModal()" class="bg-sky-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-sky-200 active:scale-95 transition-all">📱 โอน/QR</button>
         </div>
     </div>
@@ -106,11 +102,11 @@
                 <h2 class="text-xl font-black text-slate-800">📜 10 รายการล่าสุด</h2>
                 <button onclick="closeHistory()" class="text-slate-400 p-2 text-2xl">&times;</button>
             </div>
-            <div id="history-list" class="space-y-3 overflow-y-auto">
-                </div>
+            <div id="history-list" class="space-y-3 overflow-y-auto"></div>
             <button onclick="closeHistory()" class="w-full mt-6 bg-slate-100 py-3 rounded-2xl font-bold text-slate-500">ปิดหน้าต่าง</button>
         </div>
     </div>
+
     <div id="qr-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
         <div class="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl text-center">
             <h2 class="text-xl font-black mb-1">สแกนเพื่อชำระเงิน</h2>
@@ -128,32 +124,50 @@
             </div>
         </div>
     </div>
+
+    <div id="change-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+        <div class="bg-white rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl animate-slideUp">
+            <div class="text-center mb-6">
+                <p class="text-slate-400 text-xs font-black uppercase tracking-widest mb-1">ยอดรวมที่ต้องชำระ</p>
+                <h2 id="summary-total" class="text-5xl font-black text-indigo-700">0.-</h2>
+            </div>
+
+            <div class="space-y-3 mb-8">
+                <p class="text-[10px] font-bold text-slate-400 uppercase ml-2">เลือกเงินที่รับมา (คำนวณทอนให้แล้ว)</p>
+                <div id="quick-change-options" class="grid grid-cols-1 gap-3"></div>
+            </div>
+
+            <div class="flex flex-col gap-3 border-t border-slate-100 pt-6">
+                <input type="number" id="manual-cash" placeholder="ระบุยอดเงินอื่นๆ..." 
+                    class="w-full p-4 bg-slate-50 rounded-2xl text-center font-bold text-slate-600 outline-none border border-slate-100 focus:border-indigo-300">
+                
+                <div class="flex gap-2">
+                    <button onclick="closeModal('change-modal')" class="flex-1 py-4 font-bold text-slate-400 bg-slate-100 rounded-2xl">ยกเลิก</button>
+                    <button onclick="confirmManualCash()" class="flex-[1.5] bg-slate-800 text-white py-4 rounded-2xl font-black shadow-lg">ยืนยัน (เงินสด)</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const params = new URLSearchParams(window.location.search);
         const bId = params.get('id');
         const evId = params.get('event_id');
         let cart = [];
-        let masterStock = []; // เก็บสต็อกล่าสุดไว้เทียบ
+        let masterStock = []; 
         let currentStockBoothId = null;
+
         async function init() {
             try {
-
                 checkEventStatus();
                 getBoothDetail();
-        
-
-                // ค. ตัดสินใจว่าจะดึงสต็อกที่บูธไหน (สำคัญมาก!)
-                // ต้องเอาผลลัพธ์มาเก็บไว้ที่ currentStockBoothId ก่อนเรียก loadProducts
                 currentStockBoothId = await determineStockBooth(); 
-
-                // ง. เรียกโหลดสินค้าขึ้นหน้าจอ
-                // ตอนนี้ loadProducts จะรู้แล้วว่าต้องไปดึงที่ ID ไหน
                 await loadProducts();
-
             } catch (error) {
                 console.error("Initialization failed:", error);
             }
         }
+
         async function getBoothDetail() {
             const { data } = await _supabase.from('booths').select('booth_name, events(event_name)').eq('id', bId).single();
             if (data) {
@@ -161,14 +175,12 @@
                 document.getElementById('display-event-name').innerText = data.events.event_name;
             }
         }
-        // เพิ่มฟังก์ชันควบคุม Modal (วางไว้ใน <script> ส่วนบนสุด)
+
         window.openModal = function(id) {
             const modal = document.getElementById(id);
             if (modal) {
                 modal.classList.remove('hidden');
-                modal.style.display = 'flex'; // บังคับแสดงผล
-            } else {
-                console.error("หา Modal ID: " + id + " ไม่เจอ");
+                modal.style.display = 'flex'; 
             }
         };
 
@@ -179,15 +191,10 @@
                 modal.style.display = 'none';
             }
         };
-        // ตัวอย่างโค้ดในหน้า sell.html
-        async function checkEventStatus() {
-            const { data: event } = await _supabase
-                .from('events')
-                .select('status')
-                .eq('id', evId)
-                .single();
 
-            if (event.status === 'closed') {
+        async function checkEventStatus() {
+            const { data: event } = await _supabase.from('events').select('status').eq('id', evId).single();
+            if (event && event.status === 'closed') {
                 alert('❌ ขณะนี้ระบบปิดการขายชั่วคราว ไม่สามารถทำรายการได้');
                 document.getElementById('btn-cash').disabled = true;
                 document.getElementById('btn-cash').innerText = 'ปิดการขาย';
@@ -195,55 +202,48 @@
                 document.getElementById('btn-qr').innerText = 'ปิดการขาย';
             }
         }
+
         async function loadProducts() {
             if (!currentStockBoothId) return;
-            // 1. ดึงข้อมูลเพิ่ม และกรองเฉพาะที่เปิดใช้งาน (is_enabled)
            
             const { data } = await _supabase.from('booth_inventory')
-                .select(`
-                    stock_qty, 
-                    products(id, name, price, image_url, color_code, sort_order, is_enabled)
-                `)
+                .select(`stock_qty, products(id, name, price, image_url, color_code, sort_order, is_enabled)`)
                 .eq('booth_id', currentStockBoothId)
-                .eq('products.is_enabled', true) // แสดงเฉพาะที่เปิดใช้งาน
-                .order('products(sort_order)', { ascending: true }); // เรียงตามลำดับที่เราตั้งไว้
+                .eq('products.is_enabled', true) 
+                .order('products(sort_order)', { ascending: true }); 
             
-            masterStock = data;
-            console.log(masterStock)
+            masterStock = data || [];
             const grid = document.getElementById('product-grid');
             
-            grid.innerHTML = data.map(item => {
-            // 1. ตรวจสอบก่อนว่ามีข้อมูลสินค้าหรือไม่
-            if (!item.products) return ''; 
+            grid.innerHTML = masterStock.map(item => {
+                if (!item.products) return ''; 
 
-            const p = item.products;
-            const isOut = item.stock_qty <= 0;
-            
-            // 2. ใช้สีประจำสินค้า (ถ้าไม่มีใช้สี Indigo)
-            const color = p.color_code || '#F5F5F5';
-            const bgColor = color + '80'; // ความโปร่งใส 15%
+                const p = item.products;
+                const isOut = item.stock_qty <= 0;
+                const color = p.color_code || '#F5F5F5';
+                const bgColor = color + '80'; 
 
-            return `
-            <button onclick="addToCart('${p.id}', '${p.name}', ${p.price})" 
-                    ${isOut ? 'disabled' : ''}
-                    class="product-card bg-white rounded-2xl border border-slate-100 shadow-sm text-left relative overflow-hidden flex flex-col h-20 transition-all active:scale-95 ${isOut ? 'opacity-60 grayscale' : ''}"
-                    style="border-left: 6px solid ${color}">
-                
-                <div class="p-3 flex flex-col justify-between h-full w-full" style="background-color: ${bgColor}">
-                    <div>
-                        <p class="font-bold text-slate-800 text-xs leading-tight mb-0.5 line-clamp-2">${p.name || 'ไม่มีชื่อสินค้า'}</p>
-                        <p class="text-indigo-600 font-black text-base">${p.price || 0}.-</p>
+                return `
+                <button onclick="addToCart('${p.id}', '${p.name}', ${p.price})" 
+                        ${isOut ? 'disabled' : ''}
+                        class="product-card bg-white rounded-2xl border border-slate-100 shadow-sm text-left relative overflow-hidden flex flex-col h-20 transition-all active:scale-95 ${isOut ? 'opacity-60 grayscale' : ''}"
+                        style="border-left: 6px solid ${color}">
+                    
+                    <div class="p-3 flex flex-col justify-between h-full w-full" style="background-color: ${bgColor}">
+                        <div>
+                            <p class="font-bold text-slate-800 text-xs leading-tight mb-0.5 line-clamp-2">${p.name || 'ไม่มีชื่อสินค้า'}</p>
+                            <p class="text-indigo-600 font-black text-base">${p.price || 0}.-</p>
+                        </div>
                     </div>
-                </div>
 
-                ${isOut ? `
-                <div class="absolute inset-0 bg-white/40 flex items-center justify-center">
-                    <span class="bg-red-500 text-white text-[9px] px-2 py-1 rounded-lg font-bold rotate-12 shadow-lg uppercase">Out of Stock</span>
-                </div>
-                ` : ''}
-            </button>
-            `;
-        }).join('');
+                    ${isOut ? `
+                    <div class="absolute inset-0 bg-white/40 flex items-center justify-center">
+                        <span class="bg-red-500 text-white text-[9px] px-2 py-1 rounded-lg font-bold rotate-12 shadow-lg uppercase">Out of Stock</span>
+                    </div>
+                    ` : ''}
+                </button>
+                `;
+            }).join('');
         }
 
         function addToCart(id, name, price) {
@@ -251,7 +251,6 @@
             const existing = cart.find(item => item.id === id);
             const currentQty = existing ? existing.qty : 0;
 
-            // แก้ไข: เช็คสต็อกก่อนเพิ่ม
             if (currentQty + 1 > productStock.stock_qty) {
                 alert(`❌ สินค้า "${name}" ไม่พอขาย (คงเหลือ ${productStock.stock_qty})`);
                 if (window.navigator.vibrate) window.navigator.vibrate([50, 50, 50]);
@@ -264,6 +263,34 @@
                 cart.push({ id, name, price, qty: 1 });
             }
             if (window.navigator.vibrate) window.navigator.vibrate(15);
+            updateUI();
+        }
+
+        /* ฟังก์ชันใหม่: กรอกตัวเลขจำนวนเองเมื่อกดที่ตัวเลขจำนวนชิ้น */
+        function editQtyManually(id) {
+            const item = cart.find(i => i.id === id);
+            const productStock = masterStock.find(s => s.products.id === id);
+            if (!item || !productStock) return;
+
+            const inputStr = prompt(`กรอกจำนวนที่ต้องการซื้อสำหรับ "${item.name}"\n(คลังเหลืออยู่: ${productStock.stock_qty} ชิ้น)`, item.qty);
+            
+            // หากกดยกเลิก (Cancel)
+            if (inputStr === null) return;
+
+            const newQty = parseInt(inputStr, 10);
+
+            // ตรวจสอบความถูกต้องของค่าที่กรอก
+            if (isNaN(newQty) || newQty <= 0) {
+                alert("⚠️ กรุณากรอกจำนวนเป็นตัวเลขที่มากกว่า 0");
+                return;
+            }
+
+            if (newQty > productStock.stock_qty) {
+                alert(`❌ จำนวนไม่พอขาย คลังสินค้านี้เหลือเพียง ${productStock.stock_qty} ชิ้น`);
+                return;
+            }
+
+            item.qty = newQty;
             updateUI();
         }
 
@@ -281,6 +308,7 @@
             if (cart.length === 0) {
                 list.innerHTML = '<p class="text-center text-slate-300 text-sm py-4 italic">ยังไม่มีสินค้าในตะกร้า</p>';
             } else {
+                /* เพิ่ม cursor-pointer และตกแต่งพื้นหลังบอร์ดเล็กน้อยเพื่อให้ Admin รู้ว่ากดแก้ไขตัวเลขได้ */
                 list.innerHTML = cart.map(item => `
                     <div class="flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-slate-100">
                         <div class="flex-1 min-w-0 pr-2">
@@ -289,7 +317,9 @@
                         </div>
                         <div class="flex items-center gap-4">
                             <button onclick="removeFromCart('${item.id}')" class="w-8 h-8 rounded-full bg-white shadow-sm border border-slate-200 text-red-500 flex items-center justify-center font-black">-</button>
-                            <span class="font-black text-slate-800 text-sm w-4 text-center">${item.qty}</span>
+                            <span onclick="editQtyManually('${item.id}')" class="font-black text-slate-800 text-sm min-w-[24px] text-center bg-white border border-dashed border-indigo-300 px-2 py-1 rounded-lg cursor-pointer hover:bg-indigo-50 transition-colors" title="คลิกเพื่อพิมพ์จำนวนเอง">
+                                ${item.qty}
+                            </span>
                             <button onclick="addToCart('${item.id}', '${item.name}', ${item.price})" class="w-8 h-8 rounded-full bg-white shadow-sm border border-slate-200 text-emerald-500 flex items-center justify-center font-black">+</button>
                         </div>
                     </div>
@@ -302,115 +332,57 @@
             document.getElementById('total-price').innerText = total.toLocaleString() + '.-';
             list.scrollTop = list.scrollHeight;
         }
-       // ฟังก์ชันตัดสินใจว่าจะใช้สต็อกที่บูธไหน
+
         async function determineStockBooth() {
             try {
-               
+                const { data: event, error: evError } = await _supabase.from('events').select('stock_mode').eq('id', evId).single();
+                if (evError || !event) return bId; 
 
-                // 1. ดึงการตั้งค่า mode ของอีเวนต์นี้
-                const { data: event, error: evError } = await _supabase
-                    .from('events')
-                    .select('stock_mode')
-                    .eq('id', evId)
-                    .single();
-
-                if (evError || !event) return bId; // กันเหนียว: ถ้าผิดพลาด ให้ใช้บูธตัวเอง
-
-                // 2. ถ้าเป็นโหมดแยก (individual) ให้คืนค่า ID บูธตัวเอง
                 if (event.stock_mode === 'individual') {
                     return bId;
                 }
 
-                // 3. ถ้าเป็นโหมดรวม (shared) ให้ค้นหา ID บูธที่ชื่อ "คลังกลาง"
-                const { data: centralBooth, error: boothError } = await _supabase
-                    .from('booths')
-                    .select('id')
-                    .eq('event_id', evId)
-                    .eq('booth_name', 'คลังกลาง')
-                    .single();
-
+                const { data: centralBooth, error: boothError } = await _supabase.from('booths').select('id').eq('event_id', evId).eq('booth_name', 'คลังกลาง').single();
                 if (boothError || !centralBooth) {
                     console.warn("ไม่พบชื่อบูธ 'คลังกลาง' ในโหมด shared สต็อกอาจจะไม่แสดง");
                     return bId;
                 }
 
                 return centralBooth.id;
-
             } catch (e) {
                 console.error("Error determining stock booth:", e);
                 return bId;
             }
         }
+
         window.openQRModal = async function() {
-            // 1. คำนวณยอดรวมจากตะกร้าสินค้า
             const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
-            
             if (total <= 0) return alert('กรุณาเลือกสินค้าก่อนครับ');
 
             try {
-                // 2. ดึงข้อมูล Event เพื่อเอาเลข qr_code_number
-                // หมายเหตุ: currentEventId ต้องได้มาจาก URL Params หรือ store ที่คุณเก็บไว้
-                const { data: event, error } = await _supabase
-                    .from('events')
-                    .select('qr_code_number, status')
-                    .eq('id', evId) // หรือใช้ตัวแปรที่เก็บ ID งานปัจจุบันไว้
-                    .single();
+                const { data: event, error } = await _supabase.from('events').select('qr_code_number, status').eq('id', evId).single();
+                if (error || !event) return alert('ไม่สามารถดึงข้อมูลอีเวนต์ได้');
 
-                if (error || !event) {
-                    console.error('Fetch Event Error:', error);
-                    return alert('ไม่สามารถดึงข้อมูลอีเวนต์ได้');
-                }
+                if (event.status === 'closed') return alert('❌ อีเวนต์นี้ปิดการขายแล้ว ไม่สามารถรับชำระเงินได้');
+                if (!event.qr_code_number) return alert('⚠️ อีเวนต์นี้ยังไม่ได้ระบุเลขเบอร์ QR สำหรับรับเงิน');
 
-                // 3. ตรวจสอบสถานะ (ถ้า Admin ปิดงาน ไม่ให้สร้าง QR)
-                if (event.status === 'closed') {
-                    return alert('❌ อีเวนต์นี้ปิดการขายแล้ว ไม่สามารถรับชำระเงินได้');
-                }
-
-                if (!event.qr_code_number) {
-                    return alert('⚠️ อีเวนต์นี้ยังไม่ได้ระบุเลขเบอร์ QR สำหรับรับเงิน');
-                }
-
-                // 4. แสดงยอดเงินใน Modal
                 document.getElementById('qr-total-text').innerText = total.toLocaleString() + '.-';
-
-                // 5. สร้าง URL สำหรับ PromptPay QR Code (ใช้เลขที่ดึงมาจาก DB)
-                const cleanQRNumber = event.qr_code_number.replace(/-/g, ""); // ตัดเครื่องหมายขีดออกถ้ามี
+                const cleanQRNumber = event.qr_code_number.replace(/-/g, ""); 
                 const qrUrl = `https://promptpay.io/${cleanQRNumber}/${total}.png`;
-                
                 document.getElementById('qr-img').src = qrUrl;
 
-                // 6. เปิด Modal
                 openModal('qr-modal');
-
             } catch (err) {
                 console.error('System Error:', err);
                 alert('เกิดข้อผิดพลาดในการสร้าง QR Code');
-                openModal('qr-modal');
             }
         };
-                // ฟังก์ชันยืนยันการจ่ายเงิน (ปรับใช้ตาม logic เดิมของคุณ)
+
         window.confirmPayment = async function(method) {
-            // ใส่ Logic การตัดสต็อกและบันทึกข้อมูลลง Database ตรงนี้
-            // เมื่อสำเร็จให้ปิด Modal และเคลียร์ตะกร้า
-            checkout('qr')
-            
+            checkout('qr');
             closeModal('qr-modal');
-            // cart = []; renderCart(); ...
         };
-        async function getEventQRData(eventId) {
-            const { data, error } = await _supabase
-                .from('events')
-                .select('qr_code_number, status') // ดึงทั้งเลข QR และสถานะมาเช็คพร้อมกัน
-                .eq('id', eventId)
-                .single(); // ใช้ .single() เพราะเราต้องการข้อมูลแค่แถวเดียว
 
-            if (error) {
-                console.error('Error fetching event data:', error);
-                return null;
-            }
-
-            return data;
-        }
         async function checkout(method) {
             if (cart.length === 0) return;
             const btnCash = document.getElementById('btn-cash');
@@ -443,43 +415,102 @@
             btnCash.disabled = false; btnQr.disabled = false;
         }
 
-        async function showHistory() {
-        const modal = document.getElementById('history-modal');
-        const list = document.getElementById('history-list');
-        modal.classList.remove('hidden');
-        list.innerHTML = '<p class="text-center py-4">กำลังโหลด...</p>';
+        function openChangeModal() {
+            const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            if (total <= 0) return alert('เลือกสินค้าก่อนครับ');
 
-        const { data } = await _supabase.from('sales_transactions')
-            .select('sold_at, product_name, amount, payment_method')
-            .eq('booth_id', bId)
-            .order('sold_at', { ascending: false })
-            .limit(10);
+            document.getElementById('summary-total').innerText = total.toLocaleString() + '.-';
+            const container = document.getElementById('quick-change-options');
+            container.innerHTML = '';
 
-        if (!data || data.length === 0) {
-            list.innerHTML = '<p class="text-center py-4 text-slate-400 text-sm">ยังไม่มีประวัติการขาย</p>';
-            return;
+            const bills = [20, 50, 100, 500, 1000];
+            const suggestedBills = bills.filter(bill => bill >= total).slice(0, 3);
+            if (suggestedBills.length === 0) suggestedBills.push(Math.ceil(total/100)*100, Math.ceil(total/500)*500);
+
+            suggestedBills.forEach(amount => {
+                const change = amount - total;
+                const btn = document.createElement('button');
+                btn.className = "flex justify-between items-center p-5 bg-indigo-50 border-2 border-indigo-100 rounded-2xl active:scale-95 transition-all group hover:bg-indigo-600 hover:border-indigo-600";
+                btn.onclick = () => autoCheckout(amount);
+                btn.innerHTML = `
+                    <div class="text-left">
+                        <span class="block text-[10px] font-bold text-indigo-400 group-hover:text-indigo-200 uppercase">รับแบงก์</span>
+                        <span class="text-xl font-black text-indigo-700 group-hover:text-white">${amount.toLocaleString()}.-</span>
+                    </div>
+                    <div class="text-right">
+                        <span class="block text-[10px] font-bold text-emerald-500 group-hover:text-emerald-200 uppercase">เงินทอน</span>
+                        <span class="text-xl font-black text-emerald-600 group-hover:text-white">${change.toLocaleString()}.-</span>
+                    </div>
+                `;
+                container.appendChild(btn);
+            });
+
+            const exactBtn = document.createElement('button');
+            exactBtn.className = "w-full p-4 bg-emerald-500 text-white rounded-2xl font-black shadow-lg shadow-emerald-100 active:scale-95 transition-all mb-2";
+            exactBtn.innerText = `จ่ายพอดี (${total.toLocaleString()}.-)`;
+            exactBtn.onclick = () => autoCheckout(total);
+            container.prepend(exactBtn);
+
+            openModal('change-modal');
         }
 
-        list.innerHTML = data.map(item => {
-            const time = new Date(item.sold_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-            return `
-                <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-start gap-3">
-                    <div class="flex-1 min-w-0">
-                        <p class="text-[10px] text-slate-400 font-bold uppercase mb-1">${time} น.</p>
-                        <p class="text-xs font-bold text-slate-700 break-words leading-relaxed">${item.product_name}</p>
+        async function autoCheckout(receivedAmount) {
+            const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            const change = receivedAmount - total;
+
+            if (change > 0) alert(`💵 ทอนเงิน: ${change.toLocaleString()} บาท`);
+            
+            closeModal('change-modal');
+            await checkout('cash');
+        }
+
+        async function confirmManualCash() {
+            const received = parseFloat(document.getElementById('manual-cash').value);
+            const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+
+            if (!received || received < total) return alert('ยอดเงินไม่ถูกต้อง');
+            await autoCheckout(received);
+        }
+
+        async function showHistory() {
+            const modal = document.getElementById('history-modal');
+            const list = document.getElementById('history-list');
+            modal.classList.remove('hidden');
+            list.innerHTML = '<p class="text-center py-4">กำลังโหลด...</p>';
+
+            const { data } = await _supabase.from('sales_transactions')
+                .select('sold_at, product_name, amount, payment_method')
+                .eq('booth_id', bId)
+                .order('sold_at', { ascending: false })
+                .limit(10);
+
+            if (!data || data.length === 0) {
+                list.innerHTML = '<p class="text-center py-4 text-slate-400 text-sm">ยังไม่มีประวัติการขาย</p>';
+                return;
+            }
+
+            list.innerHTML = data.map(item => {
+                const time = new Date(item.sold_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+                return `
+                    <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-start gap-3">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-[10px] text-slate-400 font-bold uppercase mb-1">${time} น.</p>
+                            <p class="text-xs font-bold text-slate-700 break-words leading-relaxed">${item.product_name}</p>
+                        </div>
+                        <div class="text-right shrink-0">
+                            <p class="text-sm font-black text-slate-800">${item.amount.toLocaleString()}.-</p>
+                            <span class="text-[8px] px-2 py-0.5 rounded-full font-bold ${item.payment_method === 'cash' ? 'bg-emerald-100 text-emerald-600' : 'bg-sky-100 text-sky-600'}">
+                                ${item.payment_method === 'cash' ? 'เงินสด' : 'โอน/QR'}
+                            </span>
+                        </div>
                     </div>
-                    <div class="text-right shrink-0">
-                        <p class="text-sm font-black text-slate-800">${item.amount.toLocaleString()}.-</p>
-                        <span class="text-[8px] px-2 py-0.5 rounded-full font-bold ${item.payment_method === 'cash' ? 'bg-emerald-100 text-emerald-600' : 'bg-sky-100 text-sky-600'}">
-                            ${item.payment_method === 'cash' ? 'เงินสด' : 'โอน/QR'}
-                        </span>
-                    </div>
-                </div>
-            `;
-        }).join('');
-}
+                `;
+            }).join('');
+        }
+
         function closeHistory() { document.getElementById('history-modal').classList.add('hidden'); }
         function confirmClearCart() { if (cart.length > 0 && confirm("ล้างตะกร้า?")) { cart = []; updateUI(); } }
+        
         init();
     </script>
 </body>

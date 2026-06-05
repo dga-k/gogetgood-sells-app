@@ -95,7 +95,7 @@
         </div>
         
         <div class="grid grid-cols-2 gap-3 mb-2">
-            <button id="btn-cash" onclick="checkout('cash')" class="bg-emerald-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-emerald-200 active:scale-95 transition-all">💵 เงินสด</button>
+            <button id="btn-cash" onclick="openChangeModal()" class="bg-emerald-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-emerald-200 active:scale-95 transition-all">💵 เงินสด</button>
             <button id="btn-qr" onclick="openQRModal()" class="bg-sky-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-sky-200 active:scale-95 transition-all">📱 โอน/QR</button>
         </div>
     </div>
@@ -125,6 +125,30 @@
             <div class="flex gap-2">
                 <button onclick="closeModal('qr-modal')" class="flex-1 py-3 font-bold text-gray-500 bg-gray-100 rounded-xl">ปิด</button>
                 <button onclick="confirmPayment('transfer')" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg">ยืนยันรับเงินแล้ว</button>
+            </div>
+        </div>
+    </div>
+    <div id="change-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+        <div class="bg-white rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl animate-slideUp">
+            <div class="text-center mb-6">
+                <p class="text-slate-400 text-xs font-black uppercase tracking-widest mb-1">ยอดรวมที่ต้องชำระ</p>
+                <h2 id="summary-total" class="text-5xl font-black text-indigo-700">0.-</h2>
+            </div>
+
+            <div class="space-y-3 mb-8">
+                <p class="text-[10px] font-bold text-slate-400 uppercase ml-2">เลือกเงินที่รับมา (คำนวณทอนให้แล้ว)</p>
+                <div id="quick-change-options" class="grid grid-cols-1 gap-3">
+                    </div>
+            </div>
+
+            <div class="flex flex-col gap-3 border-t border-slate-100 pt-6">
+                <input type="number" id="manual-cash" placeholder="ระบุยอดเงินอื่นๆ..." 
+                    class="w-full p-4 bg-slate-50 rounded-2xl text-center font-bold text-slate-600 outline-none border border-slate-100 focus:border-indigo-300">
+                
+                <div class="flex gap-2">
+                    <button onclick="closeModal('change-modal')" class="flex-1 py-4 font-bold text-slate-400 bg-slate-100 rounded-2xl">ยกเลิก</button>
+                    <button onclick="confirmManualCash()" class="flex-[1.5] bg-slate-800 text-white py-4 rounded-2xl font-black shadow-lg">ยืนยัน (เงินสด)</button>
+                </div>
             </div>
         </div>
     </div>
@@ -442,7 +466,71 @@
             
             btnCash.disabled = false; btnQr.disabled = false;
         }
+        function openChangeModal() {
+            const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            if (total <= 0) return alert('เลือกสินค้าก่อนครับ');
 
+            document.getElementById('summary-total').innerText = total.toLocaleString() + '.-';
+            const container = document.getElementById('quick-change-options');
+            container.innerHTML = '';
+
+            // รายการธนบัตรมาตรฐาน
+            const bills = [20, 50, 100, 500, 1000];
+            
+            // หาแบงก์ที่มากกว่าหรือเท่ากับยอดซื้อ และแบงก์ถัดไปอีก 1-2 ระดับ
+            const suggestedBills = bills.filter(bill => bill >= total).slice(0, 3);
+            
+            // ถ้าไม่มีแบงก์ในลิสต์ที่มากกว่า (เช่น ยอด 1,200) ให้เสนอแบงก์ 1000 สองใบ หรือปัดเศษ
+            if (suggestedBills.length === 0) suggestedBills.push(Math.ceil(total/100)*100, Math.ceil(total/500)*500);
+
+            // สร้างปุ่มทางลัด
+            suggestedBills.forEach(amount => {
+                const change = amount - total;
+                const btn = document.createElement('button');
+                btn.className = "flex justify-between items-center p-5 bg-indigo-50 border-2 border-indigo-100 rounded-2xl active:scale-95 transition-all group hover:bg-indigo-600 hover:border-indigo-600";
+                btn.onclick = () => autoCheckout(amount);
+                btn.innerHTML = `
+                    <div class="text-left">
+                        <span class="block text-[10px] font-bold text-indigo-400 group-hover:text-indigo-200 uppercase">รับแบงก์</span>
+                        <span class="text-xl font-black text-indigo-700 group-hover:text-white">${amount.toLocaleString()}.-</span>
+                    </div>
+                    <div class="text-right">
+                        <span class="block text-[10px] font-bold text-emerald-500 group-hover:text-emerald-200 uppercase">เงินทอน</span>
+                        <span class="text-xl font-black text-emerald-600 group-hover:text-white">${change.toLocaleString()}.-</span>
+                    </div>
+                `;
+                container.appendChild(btn);
+            });
+
+            // ปุ่มสำหรับ "จ่ายพอดี" (ถ้าแบงก์ไม่อยู่ในรายการที่แนะนำ)
+            const exactBtn = document.createElement('button');
+            exactBtn.className = "w-full p-4 bg-emerald-500 text-white rounded-2xl font-black shadow-lg shadow-emerald-100 active:scale-95 transition-all mb-2";
+            exactBtn.innerText = `จ่ายพอดี (${total.toLocaleString()}.-)`;
+            exactBtn.onclick = () => autoCheckout(total);
+            container.prepend(exactBtn);
+
+            openModal('change-modal');
+        }
+
+        async function autoCheckout(receivedAmount) {
+            const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            const change = receivedAmount - total;
+
+            if (change > 0) {
+                alert(`💵 ทอนเงิน: ${change.toLocaleString()} บาท`);
+            }
+            
+            closeModal('change-modal');
+            await checkout('cash');
+        }
+
+        async function confirmManualCash() {
+            const received = parseFloat(document.getElementById('manual-cash').value);
+            const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+
+            if (!received || received < total) return alert('ยอดเงินไม่ถูกต้อง');
+            await autoCheckout(received);
+        }
         async function showHistory() {
         const modal = document.getElementById('history-modal');
         const list = document.getElementById('history-list');

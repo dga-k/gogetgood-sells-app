@@ -141,7 +141,7 @@
                                 <td><strong>${item.products.name}</strong></td>
                                 <td><span class="qty-badge">${item.stock_qty}</span></td>
                                 <td>${item.products.items_per_pack}</td>
-                                <td><input type="number" class="input-pack" id="in-d-${item.booth_id}-${item.product_id}" placeholder="0"></td>
+                                <td><input type="number" value="0" min="0" class="input-pack" id="in-d-${item.booth_id}-${item.product_id}" placeholder="0"></td>
                                 <td><button class="btn-add" onclick="addStock('${item.booth_id}', '${item.product_id}', 'd')">➕ เติม</button></td>
                             </tr>
                         `).join('')}
@@ -156,7 +156,7 @@
                             </div>
                             <div style="font-size: 0.75rem; color: #64748b;">บรรจุ: ${item.products.items_per_pack} ชิ้น/แพ็ค</div>
                             <div class="action-area">
-                                <input type="number" class="input-pack" id="in-m-${item.booth_id}-${item.product_id}" placeholder="จำนวนแพ็ค">
+                                <input type="number" value="0" min="0" class="input-pack" id="in-m-${item.booth_id}-${item.product_id}" placeholder="จำนวนแพ็ค">
                                 <button class="btn-add" onclick="addStock('${item.booth_id}', '${item.product_id}', 'm')">➕ เติมของ</button>
                             </div>
                         </div>
@@ -171,12 +171,16 @@
         const inputId = mode === 'm' ? `in-m-${bId}-${pId}` : `in-d-${bId}-${pId}`;
         const input = document.getElementById(inputId);
         const packs = parseInt(input.value);
+        const evId = document.getElementById('event-select').value;
+        if (!evId) return;
         if (!packs || packs <= 0) return alert("กรุณาใส่จำนวนแพ็ค");
 
         const { error } = await _supabase.rpc('add_stock_by_pack', {
             p_booth_id: bId,
-            p_product_id: pId,
-            p_packs_count: packs
+            p_event_id:evId,
+            p_packs_count: packs,
+            p_product_id: pId
+            
         });
 
         if (!error) {

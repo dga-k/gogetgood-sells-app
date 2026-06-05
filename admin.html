@@ -121,7 +121,7 @@
                 </div>
                 <div>
                     <label class="text-xs font-bold text-gray-400">เลขเบอร์ QR Code (สำหรับรับเงิน)</label>
-                    <input type="text" id="new-event-qr" placeholder="เช่น 08x-xxx-xxxx" class="w-full p-4 bg-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500">
+                    <input type="text" id="new-event-qr" value="0636628882" class="w-full p-4 bg-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500">
                 </div>
                 <div>
                     <label class="text-xs font-bold text-gray-400">สถานะเริ่มต้น</label>
@@ -179,7 +179,7 @@
                 <label class="text-xs font-bold text-gray-400">เลือกสินค้า</label>
                 <select id="stock-product-select" class="w-full p-4 bg-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500"></select>
                 <label class="text-xs font-bold text-gray-400">จำนวนที่เติม (ชิ้น)</label>
-                <input type="number" id="stock-qty" value="1" min="1" class="w-full p-4 bg-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500">
+                <input type="number" id="stock-qty" value="0" min="0" class="w-full p-4 bg-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500">
             </div>
             <div class="flex gap-3 mt-8">
                 <button onclick="closeModal('stock-modal')" class="flex-1 py-4 font-bold text-gray-500">ยกเลิก</button>
@@ -398,10 +398,10 @@
                     .eq('event_id', eventId); // *หมายเหตุ: ตารางนี้ควรมีคอลัมน์ event_id
 
                 // 3. ลบประวัติการเติมสต็อก (Stock Logs)
-                //const { error: err3 } = await _supabase
-                  //  .from('stock_logs')
-                 //   .delete()
-                  //  .eq('event_id', eventId); // *หมายเหตุ: ตารางนี้ควรมีคอลัมน์ event_id
+                const { error: err3 } = await _supabase
+                    .from('stock_logs')
+                    .delete()
+                    .eq('event_id', eventId); // *หมายเหตุ: ตารางนี้ควรมีคอลัมน์ event_id
 
                 // 4. รีเซ็ตยอดสต็อกในบูธให้เป็น 0 (Booth Inventory)
                 // ดึงรายชื่อบูธในงานนี้มาก่อน
