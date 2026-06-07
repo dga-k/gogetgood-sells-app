@@ -7,6 +7,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../config.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script> 
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Sarabun', sans-serif; background-color: #f1f5f9; height: 100vh; overflow: hidden; }
@@ -356,20 +358,52 @@
         }
 
         window.openQRModal = async function() {
+            // 1. คำนวณยอดรวมจากตะกร้าสินค้า
             const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            
             if (total <= 0) return alert('กรุณาเลือกสินค้าก่อนครับ');
 
             try {
+                // 2. ดึงข้อมูลเบอร์พร้อมเพย์จาก DB
                 const { data: event, error } = await _supabase.from('events').select('qr_code_number, status').eq('id', evId).single();
                 if (error || !event) return alert('ไม่สามารถดึงข้อมูลอีเวนต์ได้');
-
                 if (event.status === 'closed') return alert('❌ อีเวนต์นี้ปิดการขายแล้ว ไม่สามารถรับชำระเงินได้');
                 if (!event.qr_code_number) return alert('⚠️ อีเวนต์นี้ยังไม่ได้ระบุเลขเบอร์ QR สำหรับรับเงิน');
 
+                // แสดงยอดเงินใน Modal
                 document.getElementById('qr-total-text').innerText = total.toLocaleString() + '.-';
-                const cleanQRNumber = event.qr_code_number.replace(/-/g, ""); 
-                const qrUrl = `https://promptpay.io/${cleanQRNumber}/${total.toFixed(2)}.png`;
-                document.getElementById('qr-img').src = qrUrl;
+
+                // 3. ทำความสะอาดเบอร์พร้อมเพย์
+                let cleanQRNumber = event.qr_code_number.replace(/[^0-9]/g, ""); 
+                //if (cleanQRNumber.length === 10 && cleanQRNumber.startsWith('0')) {
+                 //   cleanQRNumber = '0066' + cleanQRNumber.substring(1);
+                //}
+
+                // 4. สร้าง Payload โครงสร้างพร้อมเพย์
+                const ppPayload = generatePromptPayPayload(cleanQRNumber, total);
+                
+                // --- 5. วาดรูป QR ด้วย Element ชั่วคราว แล้วส่งเข้าแท็ก <img> เดิมของคุณ ---
+                const tempDiv = document.createElement('div');
+                new QRCode(tempDiv, {
+                    text: ppPayload,
+                    width: 256,
+                    height: 256,
+                    colorDark : "#000000",
+                    colorLight : "#ffffff",
+                    correctLevel : QRCode.CorrectLevel.M
+                });
+
+                // ดึงค่ารูปภาพที่เป็น Base64 จาก Canvas ข้างในมาใส่ใน #qr-img ตรงๆ
+                setTimeout(() => {
+                    const qrCanvas = tempDiv.querySelector('canvas');
+                    if (qrCanvas) {
+                        document.getElementById('qr-img').src = qrCanvas.toDataURL();
+                    } else {
+                        const qrImage = tempDiv.querySelector('img');
+                        if (qrImage) document.getElementById('qr-img').src = qrImage.src;
+                    }
+                }, 50); // ดีเลย์ 50ms เพื่อรอให้ Library วาดรูปเสร็จชัวร์ๆ ก่อนดึงค่า
+                // ----------------------------------------------------------------------
 
                 openModal('qr-modal');
             } catch (err) {
@@ -377,6 +411,31 @@
                 alert('เกิดข้อผิดพลาดในการสร้าง QR Code');
             }
         };
+        // ฟังก์ชันสำหรับคำนวณและเข้ารหัสโครงสร้างข้อมูล PromptPay (EMVCo Standard)
+        function generatePromptPayPayload(target, amount) {
+            let targetType = target.length >= 13 ? '02' : '01'; // 01 = เบอร์มือถือ, 02 = เลขบัตรปชช/เลขผู้เสียภาษี
+            
+            let payload = '000201' + '010212'; 
+            let merchantInfo = '0016A000000677010111'; 
+            merchantInfo += targetType + String(target.length).padStart(2, '0') + target;
+            
+            payload += '29' + String(merchantInfo.length).padStart(2, '0') + merchantInfo;
+            payload += '5303764'; // ค่าเงินบาทไทย
+            payload += '54' + String(amount.toFixed(2).length).padStart(2, '0') + amount.toFixed(2);
+            payload += '5802TH';
+            
+            // หาค่า Checksum CRC16 เพื่อความปลอดภัยให้แอปธนาคารใช้ตรวจสอบตอนสแกน
+            payload += '6304';
+            let crc = 0xFFFF;
+            for (let c = 0; c < payload.length; c++) {
+                let x = ((crc >> 8) ^ payload.charCodeAt(c)) & 0xFF;
+                x ^= x >> 4;
+                crc = ((crc << 8) ^ (x << 12) ^ (x << 5) ^ x) & 0xFFFF;
+            }
+            payload += crc.toString(16).toUpperCase().padStart(4, '0');
+            
+            return payload;
+        }
 
         window.confirmPayment = async function(method) {
             checkout('qr');
