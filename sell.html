@@ -368,7 +368,7 @@
 
                 document.getElementById('qr-total-text').innerText = total.toLocaleString() + '.-';
                 const cleanQRNumber = event.qr_code_number.replace(/-/g, ""); 
-                const qrUrl = `https://promptpay.io/${cleanQRNumber}/${total}.png`;
+                const qrUrl = `https://promptpay.io/${cleanQRNumber}/${total.toFixed(2)}.png`;
                 document.getElementById('qr-img').src = qrUrl;
 
                 openModal('qr-modal');
