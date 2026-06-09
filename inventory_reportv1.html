@@ -24,26 +24,19 @@
                 <h1 class="text-2xl font-black text-slate-800 tracking-tight">📦 รายงานสต็อกสินค้า</h1>
                 <p class="text-slate-500 text-sm italic underline decoration-indigo-200">แสดงผลหน่วย: ชิ้น (แพ็ค)</p>
             </div>
-            
-            <div class="flex flex-wrap items-center gap-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
-                <div class="flex items-center gap-2">
-                    <label class="text-sm font-bold text-slate-600 whitespace-nowrap">เลือกงาน:</label>
-                    <select id="event-select" onchange="loadReport()" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-                        <option value="">-- กรุณาเลือกงาน --</option>
-                    </select>
-                </div>
-                
-                <div class="flex items-center gap-2">
-                    <label class="text-sm font-bold text-slate-600 whitespace-nowrap">ประจำวันที่:</label>
-                    <input type="date" id="report-date" onchange="loadReport()" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700">
-                </div>
+            <div class="flex items-center gap-3 bg-white p-3 rounded-2xl shadow-sm border border-slate-100">
+                <label class="text-sm font-bold text-slate-600">เลือกงาน:</label>
+                <select id="event-select" onchange="loadReport()" class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <option value="">-- กรุณาเลือกงาน --</option>
+                </select>
             </div>
         </div>
 
         <div id="event-total-summary" class="hidden mb-10">
             <div class="bg-white p-6 rounded-3xl shadow-sm border-l-8 border-indigo-600">
                 <h2 class="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">📋 สรุปยอดรวม (ทุกบูธรวมกัน)</h2>
-                <div id="event-total-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+                <div id="event-total-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    </div>
             </div>
         </div>
 
@@ -56,69 +49,36 @@
     </div>
 
     <script>
-        // ฟังก์ชันตั้งค่าวันที่ปัจจุบัน (ฟอร์แมต YYYY-MM-DD ของเซิร์ฟเวอร์/อินพุตทั่วไป)
-        function setDefaultDate() {
-            const today = new Date();
-            const yyyy = today.getFullYear();
-            const mm = String(today.getMonth() + 1).padStart(2, '0');
-            const dd = String(today.getDate()).padStart(2, '0');
-            document.getElementById('report-date').value = `${yyyy}-${mm}-${dd}`;
-        }
-
         async function init() {
-            // 1. ตั้งค่าวันที่เริ่มต้นเป็นวันปัจจุบัน
-            setDefaultDate();
-
-            // 2. โหลดรายการอีเวนต์เข้า Dropdown
             const { data: events } = await _supabase.from('events').select('*').order('event_name', { ascending: false });
             const select = document.getElementById('event-select');
-            if (events) {
-                events.forEach(ev => {
-                    const opt = document.createElement('option');
-                    opt.value = ev.id;
-                    opt.innerText = ev.event_name;
-                    select.appendChild(opt);
-                });
-            }
+            events.forEach(ev => {
+                const opt = document.createElement('option');
+                opt.value = ev.id;
+                opt.innerText = ev.event_name;
+                select.appendChild(opt);
+            });
         }
 
         async function loadReport() {
             const evId = document.getElementById('event-select').value;
-            const selectedDate = document.getElementById('report-date').value;
-            
             if (!evId) return;
+
+            const { data, error } = await _supabase
+                .from('v_stock_summary') 
+                .select('*')
+                .eq('event_id', evId)
+                .order('booth_name', { ascending: true })
+                .order('sort_order', { ascending: true });
+
+            if (error) return console.error(error);
 
             const container = document.getElementById('report-list-container');
             const eventSummaryDiv = document.getElementById('event-total-list');
             const eventSummaryCard = document.getElementById('event-total-summary');
 
-            container.innerHTML = '<div class="text-center py-10 bg-white rounded-3xl font-bold text-slate-400 animate-pulse">กำลังโหลดข้อมูล...</div>';
-
-            // --- แก้ไขจุด Query: เพิ่มฟิลเตอร์กรองตามวันที่ระบุ ---
-            let query = _supabase
-                .from('v_stock_daily_summary') 
-                .select('*')
-                .eq('event_id', evId);
-
-            // ถ้ามีการเลือกวันที่ ให้ทำการฟิลเตอร์ข้อมูล (สมมติว่าใน View มีคอลัมน์ชื่อ date หรือ transaction_date)
-            // *หมายเหตุ: หากต้องการดูยอดสะสมรวมทั้งหมดจนถึงวันนั้น ให้เปลี่ยน .eq() เป็น .lte() แทนได้ครับ*
-            if (selectedDate) {
-                // กรองเอาเฉพาะรายการที่ยอดขายตรงกับวันนั้น "หรือ" รายการที่ไม่ได้ขายเลยในวันนั้น (เพื่อให้สินค้าไม่หายไปจากตาราง)
-                query = query.or(`report_date.eq.${selectedDate},report_date.is.null`);
-            }
-
-            const { data, error } = await query
-                .order('booth_name', { ascending: true })
-                .order('sort_order', { ascending: true });
-
-            if (error) {
-                console.error(error);
-                container.innerHTML = `<div class="text-center py-10 bg-white rounded-3xl text-red-500 font-bold">เกิดข้อผิดพลาด: ${error.message}</div>`;
-                return;
-            }
-
             if (!data || data.length === 0) {
-                container.innerHTML = '<div class="text-center py-20 bg-white rounded-3xl font-bold text-slate-400 italic">❌ ไม่พบข้อมูลสต็อกในวันที่เลือก</div>';
+                container.innerHTML = '<div class="text-center py-10 bg-white rounded-3xl">ไม่พบข้อมูล</div>';
                 eventSummaryCard.classList.add('hidden');
                 return;
             }
@@ -134,23 +94,30 @@
                 return acc;
             }, {});
 
+            // เปลี่ยนการ Sort จากชื่อ เป็นค่า order
             const sortedProductNames = Object.keys(eventTotals).sort((a, b) => {
                 return eventTotals[a].order - eventTotals[b].order;
             });
-            
             eventSummaryCard.classList.remove('hidden');
             eventSummaryDiv.innerHTML = sortedProductNames.map(pName => {
                 const item = eventTotals[pName];
                 
+                // คำนวณจำนวนแพ็คแบบปัดเศษลง (จำนวนเต็ม) และเศษที่เหลือ
                 const inPacksFull = Math.floor(item.in / item.unit);
+                const inExtra = item.in % item.unit;
+                
                 const outPacksFull = Math.floor(item.out / item.unit);
+                const outExtra = item.out % item.unit;
+                
                 const balPacksFull = Math.floor(item.balance / item.unit);
+                const balExtra = item.balance % item.unit;
 
                 return `
                     <div class="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
                         <p class="font-black text-slate-800 mb-3 truncate border-b border-slate-50 pb-2">${pName}</p>
                         
                         <div class="grid grid-cols-3 gap-2 text-center">
+                            
                             <div class="flex flex-col">
                                 <span class="text-[10px] font-bold text-slate-400 uppercase">เติม</span>
                                 <span class="text-lg font-black text-green-600">${inPacksFull}<small class="text-[10px] font-medium ml-0.5">พ.</small></span>
@@ -168,6 +135,7 @@
                                 <span class="text-lg font-black text-indigo-700">${balPacksFull}<small class="text-[10px] font-medium ml-0.5">พ.</small></span>
                                 <span class="text-[9px] text-indigo-400 font-bold">${item.balance} ชิ้น</span>
                             </div>
+
                         </div>
                     </div>
                 `;
