@@ -53,7 +53,7 @@
                     </select>
                 </div>
                 <div class="flex flex-wrap gap-2 justify-end">
-                    <button onclick="openModal('booth-modal')" class="bg-indigo-600 text-white px-6 py-4 rounded-2xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200">
+                    <button onclick="openAddBoothModal()" class="bg-indigo-600 text-white px-6 py-4 rounded-2xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200">
                         + เพิ่มบูท
                     </button>
                     <button onclick="openModal('event-modal')" class="bg-white border border-gray-200 px-6 py-4 rounded-2xl font-bold text-gray-600 hover:bg-gray-50 shadow-sm">
@@ -65,7 +65,7 @@
             <div id="event-info-bar" class="hidden mt-6 pt-6 border-t border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div class="flex items-center gap-4">
                     <div class="bg-indigo-50 p-3 rounded-2xl">
-                        <span class="text-xs font-bold text-indigo-400 block uppercase">QR PromptPay</span>
+                        <span class="text-xs font-bold text-indigo-400 block uppercase">QR PromptPay กลาง</span>
                         <span id="display-qr-number" class="text-lg font-black text-indigo-700">-</span>
                     </div>
                     <div id="status-badge" class="px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest">
@@ -162,11 +162,26 @@
 
     <div id="booth-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div class="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
-            <h2 class="text-2xl font-bold mb-6">เพิ่มบูทใหม่</h2>
-            <input type="text" id="new-booth-name" placeholder="ชื่อบูท เช่น 'A1 - เครื่องดื่ม'" class="w-full p-4 bg-gray-100 rounded-2xl mb-6 outline-none focus:ring-2 focus:ring-indigo-500 font-medium">
-            <div class="flex gap-3">
-                <button onclick="closeModal('booth-modal')" class="flex-1 py-4 font-bold text-gray-500">ยกเลิก</button>
-                <button id="save-booth-btn" class="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-bold">บันทึก</button>
+            <h2 id="booth-modal-title" class="text-2xl font-bold mb-6">เพิ่มบูทใหม่</h2>
+            <input type="hidden" id="booth-modal-id">
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs font-bold text-gray-400">ชื่อบูธ</label>
+                    <input type="text" id="new-booth-name" placeholder="เช่น 'A1 - เครื่องดื่ม'" class="w-full p-4 bg-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-medium">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-gray-400">เบอร์ QR PromptPay ของบูธนี้ (ถ้าไม่มีจะใช้ของอีเวนต์)</label>
+                    <input type="text" id="new-booth-qr" placeholder="เช่น 08XXXXXXXX หรือ เลขผู้เสียภาษี" class="w-full p-4 bg-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-medium">
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center mt-8 gap-2">
+                <button id="delete-booth-btn" class="hidden text-red-500 hover:bg-red-50 px-4 py-4 rounded-2xl font-bold text-sm border border-red-100">ลบบูธนี้</button>
+                <div class="flex gap-2 flex-1 justify-end">
+                    <button onclick="closeModal('booth-modal')" class="py-4 px-4 font-bold text-gray-500">ยกเลิก</button>
+                    <button id="save-booth-btn" class="bg-indigo-600 text-white py-4 px-6 rounded-2xl font-bold">บันทึก</button>
+                </div>
             </div>
         </div>
     </div>
@@ -190,7 +205,6 @@
 
     <script>
         const store = { currentEventId: null, currentBoothId: null, allProducts: [] };
-        // URL หน้าขาย (Sell Page) จะใช้ Path เดียวกับหน้าหลัก
         const STAFF_PAGE_URL = window.location.origin + "/sell.html";
 
         // UI Controls
@@ -216,7 +230,6 @@
             if (data) {
                 document.getElementById('event-select').innerHTML = '<option value="">-- กรุณาเลือกรายการอีเวนต์ --</option>' + 
                     data.map(ev => {
-                        // ใส่ Badge สีตามสถานะ
                         const statusIcon = ev.status === 'active' ? '🟢' : '🔴';
                         return `<option value="${ev.id}">${statusIcon} ${ev.event_name} (${ev.status})</option>`;
                     }).join('');
@@ -236,6 +249,7 @@
             renderLinkTable(booths, eventId);
         }
 
+        // ปรับปรุง: เพิ่มปุ่มจัดการตั้งค่าบูธ บนการ์ดแต่ละใบ และเพิ่ม Badges แสดงเบอร์ QR ย่อยประจำบูธ
         async function renderBoothCards(booths, eventId) {
             const container = document.getElementById('content-booths');
             if (!booths || booths.length === 0) {
@@ -258,9 +272,19 @@
                     </div>
                 `).join('') || '<p class="text-xs text-gray-300 italic py-2">ไม่มีสินค้า</p>';
 
+                // ตรวจสอบสถานะเบอร์ QR เฉพาะบูธ
+                const qrBadge = booth.qr_code_number 
+                    ? `<span class="text-[10px] bg-teal-50 text-teal-600 border border-teal-100 px-2 py-0.5 rounded-md font-bold">QR: ${booth.qr_code_number}</span>`
+                    : `<span class="text-[10px] bg-gray-50 text-gray-400 px-2 py-0.5 rounded-md italic">ใช้ QR งานกลาง</span>`;
+
                 html += `
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 hover:shadow-xl transition-all duration-300">
-                        <h3 class="text-xl font-black text-gray-800 mb-4">${booth.booth_name}</h3>
+                        <div class="flex justify-between items-start mb-2">
+                            <h3 class="text-xl font-black text-gray-800 truncate max-w-[180px]">${booth.booth_name}</h3>
+                            <button onclick="openEditBoothModal('${booth.id}', '${booth.booth_name}', '${booth.qr_code_number || ''}')" class="text-gray-400 hover:text-indigo-600 text-xs font-bold transition-colors bg-gray-50 hover:bg-indigo-50 px-2.5 py-1.5 rounded-xl">⚙️ ตั้งค่าบูธ</button>
+                        </div>
+                        <div class="mb-4">${qrBadge}</div>
+                        
                         <div class="bg-gray-50 rounded-2xl p-4 mb-4 space-y-1">${stockHtml}</div>
                         <div class="grid grid-cols-2 gap-2">
                             <button onclick="openStockModal('${booth.id}', '${booth.booth_name}')" class="bg-green-50 text-green-700 py-3 rounded-xl text-xs font-bold border border-green-200 hover:bg-green-100 transition-colors">เติมสต็อก</button>
@@ -299,7 +323,6 @@
             input.setSelectionRange(0, 99999);
             navigator.clipboard.writeText(input.value);
             
-            // Visual feedback
             const btn = event.target;
             const originalText = btn.innerText;
             btn.innerText = '✅ สำเร็จ!';
@@ -309,19 +332,28 @@
                 btn.classList.replace('bg-green-600', 'bg-indigo-600');
             }, 2000);
         }
-        // เพิ่มตัวแปรเก็บข้อมูล Event ปัจจุบัน
+
         let currentEventData = null;
 
-        // แก้ไขฟังก์ชันโหลดอีเวนต์ เพื่อให้ดึงข้อมูล QR และ Status มาด้วย
-        async function loadEvents() {
-            const { data } = await _supabase.from('events').select('*');
-            if (data) {
-                document.getElementById('event-select').innerHTML = '<option value="">-- กรุณาเลือกรายการอีเวนต์ --</option>' + 
-                    data.map(ev => {
-                        const dot = ev.status === 'active' ? '🟢' : '🔴';
-                        return `<option value="${ev.id}">${dot} ${ev.event_name}</option>`;
-                    }).join('');
-            }
+        // ฟังก์ชันควบคุมโมดอลบูธสำหรับกรณี "เพิ่มใหม่"
+        function openAddBoothModal() {
+            if (!store.currentEventId) return alert('กรุณาเลือกอีเวนต์ก่อน');
+            document.getElementById('booth-modal-title').innerText = "เพิ่มบูทใหม่";
+            document.getElementById('booth-modal-id').value = "";
+            document.getElementById('new-booth-name').value = "";
+            document.getElementById('new-booth-qr').value = "";
+            document.getElementById('delete-booth-btn').classList.add('hidden');
+            openModal('booth-modal');
+        }
+
+        // ฟังก์ชันควบคุมโมดอลบูธสำหรับกรณี "แก้ไข / ลบ"
+        function openEditBoothModal(id, name, qrNumber) {
+            document.getElementById('booth-modal-title').innerText = "⚙️ ตั้งค่าและแก้ไขบูธ";
+            document.getElementById('booth-modal-id').value = id;
+            document.getElementById('new-booth-name').value = name;
+            document.getElementById('new-booth-qr').value = qrNumber === 'null' ? '' : qrNumber;
+            document.getElementById('delete-booth-btn').classList.remove('hidden');
+            openModal('booth-modal');
         }
 
         // ฟังก์ชันอัปเดตสถานะงาน (Toggle Active/Closed)
@@ -342,10 +374,9 @@
 
             if (!error) {
                 alert('อัปเดตสถานะเรียบร้อย!');
-                // รีโหลดข้อมูลงานใหม่
                 const { data } = await _supabase.from('events').select('*').eq('id', currentEventData.id).single();
                 updateEventUI(data);
-                loadEvents(); // อัปเดต Dropdown ด้วย
+                loadEvents();
             }
         }
 
@@ -372,10 +403,10 @@
                 toggleBtn.className = 'px-6 py-3 rounded-xl font-bold text-white bg-green-600 hover:bg-green-700 shadow-md transition-all';
             }
         }
+
         document.getElementById('reset-event-btn').onclick = async function() {
             if (!currentEventData) return alert('กรุณาเลือกอีเวนต์ก่อน');
 
-            // ขั้นตอนการยืนยัน (ป้องกันการกดพลาด)
             const confirm1 = confirm(`⚠️ คำเตือน: คุณกำลังจะลบข้อมูล "ยอดขาย" และ "ประวัติการเติมสต็อก" ทั้งหมดของงาน [${currentEventData.event_name}] ใช่หรือไม่?`);
             if (!confirm1) return;
 
@@ -385,44 +416,26 @@
             try {
                 const eventId = currentEventData.id;
 
-                // 1. ลบข้อมูลการขาย (Sales Transactions)
-                const { error: err1 } = await _supabase
-                    .from('sales_transactions')
-                    .delete()
-                    .eq('event_id', eventId);
+                const { error: err1 } = await _supabase.from('sales_transactions').delete().eq('event_id', eventId);
+                const { error: err2 } = await _supabase.from('stock_transfers').delete().eq('event_id', eventId);
+                const { error: err3 } = await _supabase.from('stock_logs').delete().eq('event_id', eventId);
 
-                // 2. ลบประวัติการโอนสต็อก (Transfers)
-                const { error: err2 } = await _supabase
-                    .from('stock_transfers')
-                    .delete()
-                    .eq('event_id', eventId); // *หมายเหตุ: ตารางนี้ควรมีคอลัมน์ event_id
-
-                // 3. ลบประวัติการเติมสต็อก (Stock Logs)
-                const { error: err3 } = await _supabase
-                    .from('stock_logs')
-                    .delete()
-                    .eq('event_id', eventId); // *หมายเหตุ: ตารางนี้ควรมีคอลัมน์ event_id
-
-                // 4. รีเซ็ตยอดสต็อกในบูธให้เป็น 0 (Booth Inventory)
-                // ดึงรายชื่อบูธในงานนี้มาก่อน
                 const { data: boothIds } = await _supabase.from('booths').select('id').eq('event_id', eventId);
                 const ids = boothIds.map(b => b.id);
                 
-                const { error: err4 } = await _supabase
-                    .from('booth_inventory')
-                    .update({ stock_qty: 0 })
-                    .in('booth_id', ids);
+                const { error: err4 } = await _supabase.from('booth_inventory').update({ stock_qty: 0 }).in('booth_id', ids);
 
                 if (err1 || err2 || err4) throw new Error('เกิดข้อผิดพลาดในการลบข้อมูลบางส่วน');
 
                 alert('✅ รีเซ็ตข้อมูลเรียบร้อยแล้ว! ข้อมูลการขายและสต็อกเป็นศูนย์');
-                location.reload(); // รีโหลดหน้าจอเพื่ออัปเดตตัวเลข
+                location.reload();
 
             } catch (error) {
                 console.error(error);
                 alert('เกิดข้อผิดพลาด: ' + error.message);
             }
         };
+
         // เพิ่ม Listener ให้ Dropdown
         document.getElementById('event-select').addEventListener('change', async (e) => {
             const eventId = e.target.value;
@@ -430,22 +443,16 @@
                 store.currentEventId = eventId;
                 const { data } = await _supabase.from('events').select('*').eq('id', eventId).single();
                 updateEventUI(data);
-                loadBooths(eventId); // ฟังก์ชันเดิมของคุณที่ใช้โหลด Card บูธ
+                loadBooths(eventId);
             } else {
                 document.getElementById('event-info-bar').classList.add('hidden');
             }
         });
 
-        // ผูกปุ่ม Toggle
+        // ผูกปุ่ม Toggle สถานะงาน
         document.getElementById('toggle-status-btn').onclick = toggleEventStatus;
-        // Action Handlers
-        document.getElementById('event-select').addEventListener('change', (e) => {
-            if (e.target.value) {
-                store.currentEventId = e.target.value;
-                loadBooths(e.target.value);
-            }
-        });
 
+        // สคริปต์บันทึกงานอีเวนต์
         document.getElementById('save-event-btn').addEventListener('click', async () => {
             const name = document.getElementById('new-event-name').value;
             const qr = document.getElementById('new-event-qr').value;
@@ -455,12 +462,7 @@
             if (!name) return alert('กรุณาระบุชื่ออีเวนต์');
 
             const { error } = await _supabase.from('events').insert([
-                { 
-                    event_name: name, 
-                    qr_code_number: qr, 
-                    status: status,
-                    stock_mode:mode 
-                }
+                { event_name: name, qr_code_number: qr, status: status, stock_mode: mode }
             ]);
 
             if (!error) {
@@ -471,6 +473,7 @@
             }
         });
 
+        // สคริปต์บันทึกเพิ่มสินค้า
         document.getElementById('save-product-btn').addEventListener('click', async () => {
             const name = document.getElementById('new-product-name').value;
             const price = parseFloat(document.getElementById('new-product-price').value);
@@ -480,12 +483,63 @@
             if (!error) { closeModal('product-modal'); loadAllProducts(); }
         });
 
+        // ปรับปรุง: บันทึกข้อมูลบูธ (รองรับทั้งการ INSERT เพิ่มใหม่ และ UPDATE แก้ไขตัวเดิม)
         document.getElementById('save-booth-btn').addEventListener('click', async () => {
             if (!store.currentEventId) return alert('กรุณาเลือกอีเวนต์ก่อน');
+            
+            const boothId = document.getElementById('booth-modal-id').value;
             const name = document.getElementById('new-booth-name').value;
-            if (!name) return alert('ระบุชื่อบูธ');
-            const { error } = await _supabase.from('booths').insert([{ event_id: store.currentEventId, booth_name: name }]);
-            if (!error) { closeModal('booth-modal'); loadBooths(store.currentEventId); }
+            const qrNumber = document.getElementById('new-booth-qr').value;
+            
+            if (!name) return alert('กรุณาระบุชื่อบูธ');
+
+            if (boothId) {
+                // --- เคสแก้ไขข้อมูลบูธเดิม (UPDATE) ---
+                const { error } = await _supabase
+                    .from('booths')
+                    .update({ booth_name: name, qr_code_number: qrNumber || null })
+                    .eq('id', boothId);
+
+                if (error) return alert('ไม่สามารถอัปเดตบูธได้: ' + error.message);
+                alert('แก้ไขข้อมูลบูธสำเร็จ!');
+            } else {
+                // --- เคสสร้างบูธใหม่ (INSERT) ---
+                const { error } = await _supabase
+                    .from('booths')
+                    .insert([{ event_id: store.currentEventId, booth_name: name, qr_code_number: qrNumber || null }]);
+
+                if (error) return alert('ไม่สามารถเพิ่มบูธได้: ' + error.message);
+                alert('เพิ่มบูธใหม่สำเร็จ!');
+            }
+
+            closeModal('booth-modal');
+            loadBooths(store.currentEventId);
+        });
+
+        // ปรับปรุง: ปุ่มฟังก์ชันสำหรับลบบูธออกจากระบบ
+        document.getElementById('delete-booth-btn').addEventListener('click', async () => {
+            const boothId = document.getElementById('booth-modal-id').value;
+            const name = document.getElementById('new-booth-name').value;
+            
+            if (!boothId) return;
+
+            const confirmDelete = confirm(`⚠️ คุณแน่ใจใช่ไหมว่าต้องการลบ [ ${name} ] ออกจากระบบ?\n\n*การลบนี้อาจส่งผลกระทบต่อรายการประวัติธุรกรรมที่เชื่อมโยงอยู่กับบูธนี้*`);
+            if (!confirmDelete) return;
+
+            // ทำการลบข้อมูลบูธในตาราง Supabase
+            const { error } = await _supabase
+                .from('booths')
+                .delete()
+                .eq('id', boothId);
+
+            if (error) {
+                console.error(error);
+                return alert('ไม่สามารถลบบูธได้เนื่องจากมีข้อมูลธุรกรรมค้างอยู่: ' + error.message);
+            }
+
+            alert('ลบบูธออกจากระบบเรียบร้อย');
+            closeModal('booth-modal');
+            loadBooths(store.currentEventId);
         });
 
         window.openStockModal = (id, name) => {
