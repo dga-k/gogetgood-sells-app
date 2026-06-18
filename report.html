@@ -31,7 +31,10 @@
     
     <div style="display: flex; justify-content: space-between; align-items: center;">
         <h1>📊 สรุปยอดขาย</h1>
-        <button onclick="fetchData()" style="padding: 10px 20px; cursor: pointer; border-radius: 8px; border: 1px solid #ddd;">🔄 รีเฟรชข้อมูล</button>
+        <div style="display: flex; gap: 10px;">
+            <a href="dashboard.html" style="padding: 10px 20px; cursor: pointer; border-radius: 8px; border: none; background: #6366f1; color: white; font-weight: 700; text-decoration: none; font-family: inherit; font-size: 1rem; display: inline-flex; align-items: center; gap: 6px;">📈 Analytics Dashboard</a>
+            <button onclick="fetchData()" style="padding: 10px 20px; cursor: pointer; border-radius: 8px; border: 1px solid #ddd;">🔄 รีเฟรชข้อมูล</button>
+        </div>
     </div>
 
     <div class="filter-bar">
