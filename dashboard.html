@@ -327,6 +327,15 @@
         </div>
     </div>
 
+    <!-- ROW 5: Product sales by time -->
+    <div class="charts-grid">
+        <div class="chart-card col-12">
+            <h3><span>🛍️</span> จำนวนขายแต่ละสินค้าแยกตามช่วงเวลา</h3>
+            <div class="chart-wrapper"><canvas id="chart-product-hourly" height="300"></canvas></div>
+            <p style="font-size: 0.75rem; color: #94a3b8; margin-top: 8px;">* แสดงเฉพาะสินค้าที่ขายมากที่สุด 6 อันดับแรก เพื่อให้อ่านกราฟได้ชัดเจน</p>
+        </div>
+    </div>
+
 </div><!-- /main -->
 
 <script>
@@ -443,29 +452,21 @@ async function loadAll() {
 
     // ===== Top Products =====
     const productMap = {};
+    const productHourMap = {};
     txns.forEach(t => {
         if (!t.product_name) return;
-        // product_name อาจเป็น "สินค้า A x2, สินค้า B x1" — พาร์สแต่ละรายการ
-        const parts = t.product_name.split(',');
-        parts.forEach(part => {
-            part = part.trim();
-            // รูปแบบ "ชื่อสินค้า xN"
-            const match = part.match(/^(.+?)\s*x(\d+)$/i);
-            if (match) {
-                const name = match[1].trim();
-                const qty = parseInt(match[2]);
-                if (!productMap[name]) productMap[name] = { qty: 0, revenue: 0 };
-                productMap[name].qty += qty;
-                // คำนวณรายได้โดยประมาณ (proportion ของ amount)
-                const totalQtyInBill = parts.length > 0 
-                    ? parts.reduce((s, p) => { const m = p.match(/x(\d+)/i); return s + (m ? parseInt(m[1]) : 1); }, 0)
-                    : 1;
-                productMap[name].revenue += (Number(t.amount) / totalQtyInBill) * qty;
-            } else if (part.length > 0) {
-                if (!productMap[part]) productMap[part] = { qty: 0, revenue: 0 };
-                productMap[part].qty += 1;
-                productMap[part].revenue += Number(t.amount);
-            }
+        const parsedProducts = parseProductsFromText(t.product_name);
+        const totalQtyInBill = parsedProducts.reduce((sum, p) => sum + p.qty, 0) || 1;
+        const hour = new Date(t.sold_at).getHours();
+
+        parsedProducts.forEach(p => {
+            const revenueShare = (Number(t.amount) * p.qty) / totalQtyInBill;
+            if (!productMap[p.name]) productMap[p.name] = { qty: 0, revenue: 0 };
+            productMap[p.name].qty += p.qty;
+            productMap[p.name].revenue += revenueShare;
+
+            if (!productHourMap[p.name]) productHourMap[p.name] = Array(24).fill(0);
+            productHourMap[p.name][hour] += p.qty;
         });
     });
     const topProducts = Object.entries(productMap)
@@ -473,6 +474,12 @@ async function loadAll() {
         .sort((a, b) => b.qty - a.qty)
         .slice(0, 10);
     renderTopProducts(topProducts);
+
+    const topProductsByQty = [...topProducts]
+        .sort((a, b) => b.qty - a.qty)
+        .slice(0, 6)
+        .map(p => p.name);
+    renderProductHourlyChart(productHourMap, topProductsByQty);
 
     // ===== Insight Box =====
     const peakHour = byHour.indexOf(Math.max(...byHour));
@@ -662,6 +669,54 @@ function renderTopProducts(products) {
     }).join('');
 }
 
+function renderProductHourlyChart(productHourMap, topProductNames) {
+    destroyChart('product-hourly');
+    const ctx = document.getElementById('chart-product-hourly').getContext('2d');
+    const labels = Array.from({length: 24}, (_, i) => `${i}:00`);
+    const palette = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6'];
+
+    const datasets = topProductNames.map((name, idx) => ({
+        label: name,
+        data: productHourMap[name] || Array(24).fill(0),
+        backgroundColor: palette[idx % palette.length],
+        borderRadius: 4,
+        maxBarThickness: 22,
+    }));
+
+    chartInstances['product-hourly'] = new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => `${context.dataset.label}: ${Number(context.raw || 0).toLocaleString()} ชิ้น`
+                    }
+                }
+            },
+            scales: {
+                x: { stacked: true, grid: { display: false } },
+                y: {
+                    stacked: true,
+                    beginAtZero: true,
+                    ticks: {
+                        callback: v => Number(v).toLocaleString(),
+                        padding: 8,
+                    },
+                    title: {
+                        display: true,
+                        text: 'ชิ้น',
+                    },
+                    grid: { color: '#f1f5f9' }
+                }
+            }
+        }
+    });
+}
+
 function renderHeatmap(heatmapData) {
     const days = Object.keys(heatmapData).sort();
     const container = document.getElementById('heatmap-container');
@@ -723,11 +778,26 @@ function renderEmpty() {
     document.getElementById('kpi-cash').textContent = '0';
     document.getElementById('kpi-qr').textContent = '0';
     document.getElementById('heatmap-container').innerHTML = '<p style="color:#94a3b8;font-size:0.9rem;padding:20px 0;">ยังไม่มีข้อมูลการขายในงานนี้</p>';
+    destroyChart('product-hourly');
 }
 
 // ===== UTILS =====
 function fmt(n) { return Math.round(n).toLocaleString('th-TH'); }
 function pct(part, total) { return total > 0 ? Math.round(part / total * 100) + '%' : '0%'; }
+function parseProductsFromText(productText) {
+    if (!productText || typeof productText !== 'string') return [];
+    return productText
+        .split(',')
+        .map(part => part.trim())
+        .filter(Boolean)
+        .map(part => {
+            const match = part.match(/^(.+?)\s*x(\d+)$/i);
+            if (match) {
+                return { name: match[1].trim(), qty: parseInt(match[2], 10) || 1 };
+            }
+            return { name: part, qty: 1 };
+        });
+}
 function localDateStr(dt) {
     return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
 }
