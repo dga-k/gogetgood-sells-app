@@ -100,7 +100,12 @@
                         <thead class="bg-gray-50 text-gray-600 uppercase text-xs">
                             <tr>
                                 <th class="p-5 font-bold">ชื่อบูธ</th>
-                                <th class="p-5 font-bold">URL สำหรับพนักงาน (Staff Page)</th>
+                                <th class="p-5 font-bold">
+                                    <div class="flex items-center justify-between gap-3">
+                                        <span>URL สำหรับพนักงาน (Staff Page)</span>
+                                        <button id="copy-all-links-btn" onclick="copyAllLinks(event)" class="bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-sm whitespace-nowrap">คัดลอกทั้งหมด</button>
+                                    </div>
+                                </th>
                                 <th class="p-5 font-bold text-center">คัดลอก</th>
                             </tr>
                         </thead>
@@ -138,6 +143,10 @@
                     <option value="shared">ใช้สต็อกคลังกลางร่วมกัน (Shared)</option>
                 </select>
             </div>
+                <div id="shared-booth-count-container" class="hidden">
+                    <label for="new-event-booth-count" class="text-xs font-bold text-gray-400">จำนวนบูธขาย</label>
+                    <input type="number" id="new-event-booth-count" value="1" min="1" step="1" class="w-full p-4 bg-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
             </div>
             <div class="flex gap-3 mt-8">
                 <button onclick="closeModal('event-modal')" class="flex-1 py-4 font-bold text-gray-500">ยกเลิก</button>
@@ -189,17 +198,18 @@
 
     <div id="stock-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div class="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
-            <h2 class="text-2xl font-bold mb-2">📦 เติมสต็อกสินค้า</h2>
+            <h2 class="text-2xl font-bold mb-2">เพิ่มสินค้าให้บูธ</h2>
             <p id="target-booth-name" class="text-indigo-600 font-bold mb-6 italic"></p>
             <div class="space-y-4">
-                <label class="text-xs font-bold text-gray-400">เลือกสินค้า</label>
-                <select id="stock-product-select" class="w-full p-4 bg-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500"></select>
-                <label class="text-xs font-bold text-gray-400">จำนวนที่เติม (ชิ้น)</label>
-                <input type="number" id="stock-qty" value="0" min="0" class="w-full p-4 bg-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500">
+                <div>
+                    <label class="text-xs font-bold text-gray-400">เลือกสินค้าที่ต้องการเพิ่ม</label>
+                    <div id="stock-product-list" class="mt-2 max-h-64 overflow-y-auto rounded-2xl border border-gray-200 divide-y divide-gray-100"></div>
+                </div>
+                <p id="stock-sharing-note" class="hidden text-xs text-indigo-600 bg-indigo-50 p-3 rounded-xl">สินค้าที่เลือกจะเพิ่มให้ทุกบูธ โดยจำนวนสต็อกเริ่มต้นเป็น 0 และยังใช้สต็อกร่วมกันจากคลังกลาง</p>
             </div>
             <div class="flex gap-3 mt-8">
                 <button onclick="closeModal('stock-modal')" class="flex-1 py-4 font-bold text-gray-500">ยกเลิก</button>
-                <button id="confirm-stock-btn" class="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-bold">ยืนยันเติมของ</button>
+                <button id="confirm-stock-btn" class="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-bold">เพิ่มสินค้าที่เลือก</button>
             </div>
         </div>
     </div>
@@ -227,21 +237,57 @@
         }
 
         async function loadEvents() {
-            const { data } = await _supabase.from('events').select('*');
-            if (data) {
-                document.getElementById('event-select').innerHTML = '<option value="">-- กรุณาเลือกรายการอีเวนต์ --</option>' + 
-                    data.map(ev => {
-                        const statusIcon = ev.status === 'active' ? '🟢' : '🔴';
-                        return `<option value="${ev.id}">${statusIcon} ${ev.event_name} (${ev.status})</option>`;
-                    }).join('');
+            const { data, error } = await _supabase.from('events').select('*');
+            const select = document.getElementById('event-select');
+
+            if (error) {
+                console.error(error);
+                select.innerHTML = '<option value="">-- ไม่สามารถโหลดรายการอีเวนต์ --</option>';
+                alert('ไม่สามารถโหลดรายการอีเวนต์: ' + error.message);
+                return;
             }
+
+            if (!data || data.length === 0) {
+                select.innerHTML = '<option value="">-- ยังไม่มีอีเวนต์ --</option>';
+                return;
+            }
+
+            const sortedEvents = [...data].sort((a, b) => {
+                const aActive = a.status === 'active' ? 0 : 1;
+                const bActive = b.status === 'active' ? 0 : 1;
+                if (aActive !== bActive) return aActive - bActive;
+
+                const aDate = a.created_at ? new Date(a.created_at).getTime() : 0;
+                const bDate = b.created_at ? new Date(b.created_at).getTime() : 0;
+                if (aDate !== bDate) return bDate - aDate;
+
+                if (typeof a.id === 'number' && typeof b.id === 'number') return b.id - a.id;
+                return String(b.id).localeCompare(String(a.id));
+            });
+
+            select.innerHTML = '<option value="">-- กรุณาเลือกรายการอีเวนต์ --</option>' +
+                sortedEvents.map(ev => {
+                    const statusIcon = ev.status === 'active' ? '🟢' : '🔴';
+                    return `<option value="${ev.id}">${statusIcon} ${ev.event_name} (${ev.status})</option>`;
+                }).join('');
         }
 
         async function loadAllProducts() {
             const { data } = await _supabase.from('products').select('*').order('name');
             store.allProducts = data || [];
-            document.getElementById('stock-product-select').innerHTML = 
-                store.allProducts.map(p => `<option value="${p.id}">${p.name} (฿${p.price})</option>`).join('');
+            document.getElementById('stock-product-list').innerHTML = store.allProducts.length
+                ? store.allProducts.map(product => `
+                    <div class="flex items-center justify-between gap-3 p-3">
+                        <label for="stock-product-${product.id}" class="flex min-w-0 items-center gap-3">
+                            <input type="checkbox" id="stock-product-${product.id}" data-product-id="${product.id}" class="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            <span class="min-w-0">
+                                <span class="block truncate text-sm font-bold text-gray-700">${product.name}</span>
+                                <span class="block text-xs text-gray-400">฿${product.price}</span>
+                            </span>
+                        </label>
+                    </div>
+                `).join('')
+                : '<p class="p-4 text-sm text-gray-400">ยังไม่มีสินค้าในระบบ</p>';
         }
 
         async function loadBooths(eventId) {
@@ -288,7 +334,7 @@
                         
                         <div class="bg-gray-50 rounded-2xl p-4 mb-4 space-y-1">${stockHtml}</div>
                         <div class="grid grid-cols-2 gap-2">
-                            <button onclick="openStockModal('${booth.id}', '${booth.booth_name}')" class="bg-green-50 text-green-700 py-3 rounded-xl text-xs font-bold border border-green-200 hover:bg-green-100 transition-colors">เติมสต็อก</button>
+                            <button onclick="openStockModal('${booth.id}', '${booth.booth_name}')" class="bg-green-50 text-green-700 py-3 rounded-xl text-xs font-bold border border-green-200 hover:bg-green-100 transition-colors">เพิ่มสินค้า</button>
                             <a href="sell.html?id=${booth.id}&event_id=${eventId}" class="bg-indigo-600 text-white py-3 rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-md text-center flex items-center justify-center">🛒 หน้าขาย</a>
                         </div>
                     </div>`;
@@ -327,6 +373,29 @@
             const btn = event.target;
             const originalText = btn.innerText;
             btn.innerText = '✅ สำเร็จ!';
+            btn.classList.replace('bg-indigo-600', 'bg-green-600');
+            setTimeout(() => {
+                btn.innerText = originalText;
+                btn.classList.replace('bg-green-600', 'bg-indigo-600');
+            }, 2000);
+        }
+
+        async function copyAllLinks(clickEvent) {
+            const rows = [...document.querySelectorAll('#link-table-body tr')];
+            const links = rows.map(row => {
+                const boothName = row.querySelector('td')?.innerText?.trim();
+                const url = row.querySelector('input[type="text"]')?.value?.trim();
+                return boothName && url ? `${boothName}\n${url}` : '';
+            }).filter(Boolean);
+
+            if (links.length === 0) return alert('ไม่มีลิงก์พนักงานให้คัดลอก');
+
+            const text = links.join('\n\n');
+            await navigator.clipboard.writeText(text);
+
+            const btn = clickEvent.currentTarget;
+            const originalText = btn.innerText;
+            btn.innerText = '✅ คัดลอกทั้งหมดแล้ว';
             btn.classList.replace('bg-indigo-600', 'bg-green-600');
             setTimeout(() => {
                 btn.innerText = originalText;
@@ -453,20 +522,39 @@
         // ผูกปุ่ม Toggle สถานะงาน
         document.getElementById('toggle-status-btn').onclick = toggleEventStatus;
 
+        document.getElementById('new-event-stock-mode').addEventListener('change', (event) => {
+            document.getElementById('shared-booth-count-container').classList.toggle('hidden', event.target.value !== 'shared');
+        });
+
         // สคริปต์บันทึกงานอีเวนต์
         document.getElementById('save-event-btn').addEventListener('click', async () => {
             const name = document.getElementById('new-event-name').value;
             const qr = document.getElementById('new-event-qr').value;
             const status = document.getElementById('new-event-status').value;
             const mode = document.getElementById('new-event-stock-mode').value;
+            const boothCount = Number(document.getElementById('new-event-booth-count').value);
             
             if (!name) return alert('กรุณาระบุชื่ออีเวนต์');
+            if (mode === 'shared' && (!Number.isInteger(boothCount) || boothCount < 1)) {
+                return alert('กรุณาระบุจำนวนบูธขายอย่างน้อย 1 บูธ');
+            }
 
-            const { error } = await _supabase.from('events').insert([
+            const { data: createdEvent, error } = await _supabase.from('events').insert([
                 { event_name: name, qr_code_number: qr, status: status, stock_mode: mode }
-            ]);
+            ]).select('id').single();
 
             if (!error) {
+                if (mode === 'shared') {
+                    const booths = [
+                        { event_id: createdEvent.id, booth_name: 'คลังกลาง' },
+                        ...Array.from({ length: boothCount }, (_, index) => ({
+                            event_id: createdEvent.id,
+                            booth_name: `บูท ${index + 1}`
+                        }))
+                    ];
+                    const { error: boothError } = await _supabase.from('booths').insert(booths);
+                    if (boothError) return alert('สร้างอีเวนต์แล้ว แต่สร้างบูธไม่สำเร็จ: ' + boothError.message);
+                }
                 alert('สร้างอีเวนต์เรียบร้อย!');
                 location.reload();
             } else {
@@ -521,13 +609,12 @@
         document.getElementById('delete-booth-btn').addEventListener('click', async () => {
             const boothId = document.getElementById('booth-modal-id').value;
             const name = document.getElementById('new-booth-name').value;
-            
+
             if (!boothId) return;
 
             const confirmDelete = confirm(`⚠️ คุณแน่ใจใช่ไหมว่าต้องการลบ [ ${name} ] ออกจากระบบ?\n\n*การลบนี้อาจส่งผลกระทบต่อรายการประวัติธุรกรรมที่เชื่อมโยงอยู่กับบูธนี้*`);
             if (!confirmDelete) return;
 
-            // ทำการลบข้อมูลบูธในตาราง Supabase
             const { error } = await _supabase
                 .from('booths')
                 .delete()
@@ -545,27 +632,51 @@
 
         window.openStockModal = (id, name) => {
             store.currentBoothId = id;
+            store.currentBoothName = name;
             document.getElementById('target-booth-name').innerText = `บูท: ${name}`;
+            document.getElementById('stock-sharing-note').classList.toggle('hidden', !(currentEventData?.stock_mode === 'shared' && name === 'คลังกลาง'));
             openModal('stock-modal');
         }
 
         document.getElementById('confirm-stock-btn').addEventListener('click', async () => {
-            const productId = document.getElementById('stock-product-select').value;
-            const qty = parseInt(document.getElementById('stock-qty').value);
-            
-            const { data: current } = await _supabase.from('booth_inventory')
-                .select('stock_qty').eq('booth_id', store.currentBoothId).eq('product_id', productId).maybeSingle();
-            
-            const newQty = (current?.stock_qty || 0) + qty;
-            const { error } = await _supabase.from('booth_inventory').upsert({
-                booth_id: store.currentBoothId, product_id: productId, stock_qty: newQty
-            }, { onConflict: 'booth_id, product_id' });
+            const selectedProductIds = [...document.querySelectorAll('#stock-product-list input[type="checkbox"]:checked')]
+                .map(checkbox => checkbox.dataset.productId);
 
-            if (!error) { 
-                closeModal('stock-modal'); 
-                loadBooths(store.currentEventId);
-                alert('เติมสต็อกเรียบร้อย!');
+            if (selectedProductIds.length === 0) return alert('กรุณาเลือกสินค้าอย่างน้อย 1 รายการ');
+
+            const isSharedCentralStock = currentEventData?.stock_mode === 'shared' && store.currentBoothName === 'คลังกลาง';
+            let boothIds = [store.currentBoothId];
+            if (isSharedCentralStock) {
+                const { data: booths, error: boothsError } = await _supabase.from('booths').select('id').eq('event_id', store.currentEventId);
+                if (boothsError) return alert('ไม่สามารถโหลดรายการบูธได้: ' + boothsError.message);
+                boothIds = booths.map(booth => booth.id);
             }
+
+            const { data: existingInventory, error: inventoryError } = await _supabase.from('booth_inventory')
+                .select('booth_id, product_id, stock_qty')
+                .in('booth_id', boothIds)
+                .in('product_id', selectedProductIds);
+            if (inventoryError) return alert('ไม่สามารถโหลดสต็อกปัจจุบันได้: ' + inventoryError.message);
+
+            const existingKeys = new Set((existingInventory || []).map(item => `${item.booth_id}:${item.product_id}`));
+            const inventoryToAdd = [];
+            for (const productId of selectedProductIds) {
+                for (const boothId of boothIds) {
+                    const key = `${boothId}:${productId}`;
+                    if (!existingKeys.has(key)) {
+                        inventoryToAdd.push({ booth_id: boothId, product_id: productId, stock_qty: 0 });
+                    }
+                }
+            }
+
+            if (inventoryToAdd.length === 0) return alert('สินค้าที่เลือกมีอยู่ในบูธที่เกี่ยวข้องแล้ว');
+
+            const { error } = await _supabase.from('booth_inventory').insert(inventoryToAdd);
+            if (error) return alert('ไม่สามารถเพิ่มสินค้าให้บูธได้: ' + error.message);
+
+            closeModal('stock-modal');
+            await loadBooths(store.currentEventId);
+            alert('เพิ่มสินค้าให้บูธเรียบร้อย!');
         });
 
         init();
